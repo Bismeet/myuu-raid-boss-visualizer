@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Plan and visualize 1v6 Myuu-style Pokémon raid damage across 21 turns.">
+  <title>Myuu Raid — Pokémon Adventure Planner</title>
+  <link rel="preconnect" href="https://raw.githubusercontent.com">
+  <link rel="stylesheet" href="styles.css?v=6">
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="#home" aria-label="Myuu Raid home">
+      <span class="brand-mark"><i></i></span>
+      <span><strong>MYUU RAID</strong><small>Adventure Planner</small></span>
+    </a>
+    <nav class="app-nav" aria-label="Primary navigation">
+      <a href="#home" data-app-view="home"><span>01</span>Home</a>
+      <a href="#team-builder" data-app-view="team-builder"><span>02</span>Team Builder</a>
+      <a href="#boss-builder" data-app-view="boss-builder"><span>03</span>Boss Builder</a>
+      <a href="#battle" data-app-view="battle"><span>04</span>Battle</a>
+    </nav>
+    <div class="header-status"><span class="signal"></span><span>Pokédex online</span><strong>21 turns</strong></div>
+  </header>
+
+  <main id="workspace" class="app-layout app-shell">
+    <section id="home-view" class="app-view home-view" aria-label="Home">
+      <div id="home-page"></div>
+    </section>
+
+    <section id="team-builder-view" class="app-view team-builder-view" aria-label="Team Builder" hidden>
+      <div class="view-intro">
+        <div><span class="eyebrow">Team laboratory</span><h1>Team Builder</h1><p>Build and tune every member of your six-Pokémon raid line.</p></div>
+        <a class="view-context-link" href="#boss-builder">Next: Boss Builder <span>→</span></a>
+      </div>
+      <div id="team-builder"></div>
+    </section>
+
+    <section id="boss-builder-view" class="app-view boss-builder-view" aria-label="Boss Builder" hidden>
+      <div class="view-intro">
+        <div><span class="eyebrow">Legendary encounter setup</span><h1>Boss Builder</h1><p>Choose the raid target, tune its moves, or define a custom encounter.</p></div>
+        <a class="view-context-link" href="#team-builder">Review Team <span>→</span></a>
+      </div>
+      <div id="boss-panel"></div>
+    </section>
+
+    <section id="battle-view" class="app-view battle-view" aria-label="Battle" hidden>
+      <div id="battle-gate"></div>
+      <div id="battle-scene"></div>
+      <div id="summary"></div>
+    </section>
+  </main>
+
+  <noscript>This app requires JavaScript to calculate and visualize raid damage.</noscript>
+  <script type="module" src="js/app.js?v=4"></script>
+</body>
+</html>
