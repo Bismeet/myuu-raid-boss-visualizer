@@ -351,9 +351,14 @@ export class BattleScene {
     this.render();
   }
 
+  controlsLocked() {
+    return this.busy || this.state.isResolvingTurn;
+  }
+
   render() {
     const boss = this.state.boss;
     const isBattle = this.state.battleActive;
+    const controlsLocked = this.controlsLocked();
     
     let formulaModalHTML = "";
     if (this.showFormulaPanel) {
@@ -439,10 +444,10 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
           <div class="battle-toolbar" style="margin-bottom: 12px;">
             <div><span class="eyebrow">Live visualization</span><h2 id="battle-title">Battle field</h2></div>
             <div class="battle-actions" style="display:flex; gap:8px;">
-              <button class="button primary" id="simulate-all">▶ Simulate all</button>
-              <button class="button" id="step-turn">Step turn</button>
-              <button class="button" id="reset-battle">Reset</button>
-              <button class="button" id="copy-summary">Copy summary</button>
+              <button type="button" class="button primary" id="simulate-all">▶ Simulate all</button>
+              <button type="button" class="button" id="step-turn">Step turn</button>
+              <button type="button" class="button" id="reset-battle">Reset</button>
+              <button type="button" class="button" id="copy-summary">Copy summary</button>
             </div>
           </div>
           <div class="battlefield">
@@ -492,10 +497,13 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
         bgStyle = "rgba(239, 68, 68, 0.05)";
         opacity = "0.6";
       }
+      const isUnavailable = controlsLocked
+        || (!this.state.awaitingForcedSwitch && (isActive || isFainted))
+        || (this.state.awaitingForcedSwitch && isFainted);
 
       return `
-        <button type="button" class="party-member-btn" data-slot="${idx}" style="width:100%; border:${borderStyle}; background:${bgStyle}; opacity:${opacity}; padding:6px; border-radius:6px; cursor:pointer; text-align:left; display:flex; gap:6px; align-items:center; min-height:48px; position:relative; user-select:none;">
-          <img src="${spriteUrl(slot.pokemon.name)}" data-fallback="${fallbackSprite(slot.pokemon)}" style="width:28px; height:28px; object-fit:contain;">
+        <button type="button" class="party-member-btn" data-slot="${idx}" aria-label="Select ${displayName(slot.pokemon.name)}" ${isUnavailable ? "disabled" : ""} style="width:100%; border:${borderStyle}; background:${bgStyle}; opacity:${opacity}; padding:6px; border-radius:6px; cursor:pointer; text-align:left; display:flex; gap:6px; align-items:center; min-height:48px; position:relative; user-select:none;">
+          <img src="${spriteUrl(slot.pokemon.name)}" data-fallback="${fallbackSprite(slot.pokemon)}" alt="" style="width:28px; height:28px; object-fit:contain;">
           <div style="flex:1; min-width:0; display:grid; line-height:1.2;">
             <strong style="font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:${isFainted ? 'var(--danger)' : 'var(--text)'};">${displayName(slot.pokemon.name)}</strong>
             <span style="font-size:8px; color:var(--faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${slot.item ? titleCase(slot.item) : "No item"}</span>
@@ -516,7 +524,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
         <div class="battle-resume-prompt" style="text-align:center; padding:15px; border-radius:6px; background:rgba(82,211,230,0.05); border:1px solid rgba(82,211,230,0.2);">
           <strong style="color:var(--cyan); font-size:12px; display:block; margin-bottom:4px;">Saved Battle Found</strong>
           <span style="font-size:11px; color:var(--muted);">Continue from your saved turn and party state.</span>
-          <button type="button" id="resume-battle-btn" class="button primary">Resume Battle</button>
+          <button type="button" id="resume-battle-btn" class="button primary" ${controlsLocked ? "disabled" : ""}>Resume Battle</button>
         </div>
       `;
     } else if (this.state.awaitingForcedSwitch) {
@@ -531,13 +539,13 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
         <div>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <strong style="color:var(--cyan); font-size:12px;">Baton Pass: Choose a receiver</strong>
-            <button type="button" id="cancel-baton-pass-btn" style="font-size:9px; padding:2px 6px; cursor:pointer; background:var(--surface-2); color:var(--text); border:1px solid var(--border); border-radius:3px;">Cancel</button>
+            <button type="button" id="cancel-baton-pass-btn" ${controlsLocked ? "disabled" : ""} style="font-size:9px; padding:2px 6px; cursor:pointer; background:var(--surface-2); color:var(--text); border:1px solid var(--border); border-radius:3px;">Cancel</button>
           </div>
           <span style="font-size:11px; color:var(--muted); display:block; margin-bottom:6px;">Select which Pokémon will inherit stat stages:</span>
           <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px;">
             ${this.state.team.map((slot, idx) => {
               if (idx === activeSlot || !slot.pokemon || this.state.teamHP[idx] <= 0) return "";
-              return `<button type="button" class="baton-target-btn" data-slot="${idx}" style="font-size:10px; padding:6px; cursor:pointer; background:var(--surface-3); border:1px solid var(--border); border-radius:4px; color:var(--text);">${displayName(slot.pokemon.name)}</button>`;
+              return `<button type="button" class="baton-target-btn" data-slot="${idx}" ${controlsLocked ? "disabled" : ""} style="font-size:10px; padding:6px; cursor:pointer; background:var(--surface-3); border:1px solid var(--border); border-radius:4px; color:var(--text);">${displayName(slot.pokemon.name)}</button>`;
             }).join("")}
           </div>
         </div>
@@ -550,7 +558,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
             <span style="font-size:9px; color:var(--muted); display:block; text-transform:uppercase; font-weight:800;">Pending Action</span>
             <strong style="font-size:12px; color:var(--cyan);">Switch to ${targetMon ? displayName(targetMon.pokemon.name) : "Slot " + (this.selectedSwitchSlot + 1)}</strong>
           </div>
-          <button type="button" id="cancel-switch-btn" class="button" style="font-size:11px; padding:4px 10px; cursor:pointer;">Cancel Switch</button>
+          <button type="button" id="cancel-switch-btn" class="button" ${controlsLocked ? "disabled" : ""} style="font-size:11px; padding:4px 10px; cursor:pointer;">Cancel Switch</button>
         </div>
       `;
     } else {
@@ -575,7 +583,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
           if (zMoveUnused) {
             zMoveButtonHTML = `
               <div style="margin-top: 10px; border-top: 1px solid var(--border-soft); padding-top: 10px;">
-                <button type="button" id="z-move-btn" style="width: 100%; border:1px solid var(--border-soft); background:var(--surface-3); border-radius:6px; padding:8px 10px; cursor:pointer; text-align:left; display:flex; flex-direction:column; justify-content:space-between; min-height:48px; color:var(--text); transition:all 0.15s ease;">
+                <button type="button" id="z-move-btn" ${controlsLocked ? "disabled" : ""} style="width: 100%; border:1px solid var(--border-soft); background:var(--surface-3); border-radius:6px; padding:8px 10px; cursor:pointer; text-align:left; display:flex; flex-direction:column; justify-content:space-between; min-height:48px; color:var(--text); transition:all 0.15s ease;">
                   <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
                     <strong style="font-size:11px; color:#c084fc;">[Z-Belly Drum]</strong>
                     <span class="type-badge type-normal" style="padding:1px 3px; font-size:7px;">normal</span>
@@ -613,7 +621,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
                 let bgStyle = isSelected ? "rgba(82,211,230,0.15)" : "var(--surface-3)";
   
                 return `
-                  <button type="button" class="move-btn" data-move-idx="${idx}" data-baton-pass="${isBatonPass}" style="border:${borderStyle}; background:${bgStyle}; border-radius:6px; padding:6px 10px; cursor:pointer; text-align:left; display:flex; flex-direction:column; justify-content:space-between; min-height:48px; color:var(--text); transition:all 0.15s ease;">
+                  <button type="button" class="move-btn" data-move-idx="${idx}" data-baton-pass="${isBatonPass}" ${controlsLocked ? "disabled" : ""} style="border:${borderStyle}; background:${bgStyle}; border-radius:6px; padding:6px 10px; cursor:pointer; text-align:left; display:flex; flex-direction:column; justify-content:space-between; min-height:48px; color:var(--text); transition:all 0.15s ease;">
                     <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
                       <strong style="font-size:11px;">${titleCase(m.name)}</strong>
                       <span class="type-badge type-${m.type.name}" style="padding:1px 3px; font-size:7px;">${m.type.name}</span>
@@ -629,7 +637,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
             ${!this.state.teraUsed.player ? `
               <div style="margin-top: 8px; display:flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--border-soft); padding:6px; border-radius:6px; background:var(--bg-elevated);">
                 <label style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; font-size:11px; color:var(--text);">
-                  <input type="checkbox" id="terastallize-checkbox" ${this.shouldTerastallize ? "checked" : ""}>
+                  <input type="checkbox" id="terastallize-checkbox" ${this.shouldTerastallize ? "checked" : ""} ${controlsLocked ? "disabled" : ""}>
                   Terastallize
                 </label>
                 <span class="type-badge type-${activeBuild.teraType || 'normal'}" style="font-size:8px; padding:1px 4px; border-radius:3px;">
@@ -722,19 +730,19 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
               
               <div class="battle-setting">
                 <span>Boss Action:</span>
-                <select id="boss-action-select" style="min-height:28px; font-size:11px; background:var(--bg-card); border:1px solid var(--border); color:var(--text); border-radius:4px; padding: 2px 6px;">
+                <select id="boss-action-select" ${controlsLocked ? "disabled" : ""} style="min-height:28px; font-size:11px; background:var(--bg-card); border:1px solid var(--border); color:var(--text); border-radius:4px; padding: 2px 6px;">
                   ${bossMoves.length > 0 ? `<option value="random-move" ${this.bossAction === "random-move" ? "selected" : ""}>Random Move</option>` : ""}
                   ${bossMoves.length > 0 ? `<option value="use-move" ${this.bossAction === "use-move" ? "selected" : ""}>Use Selected Move</option>` : ""}
                   <option value="do-nothing" ${this.bossAction === "do-nothing" ? "selected" : ""}>Do Nothing</option>
                 </select>
-                <select id="boss-move-select" class="${this.bossAction === "use-move" ? "" : "hidden"}" style="min-height:28px; font-size:11px; background:var(--bg-card); border:1px solid var(--border); color:var(--text); border-radius:4px; padding: 2px 6px;">
+                <select id="boss-move-select" class="${this.bossAction === "use-move" ? "" : "hidden"}" ${controlsLocked ? "disabled" : ""} style="min-height:28px; font-size:11px; background:var(--bg-card); border:1px solid var(--border); color:var(--text); border-radius:4px; padding: 2px 6px;">
                   ${bossMoves.map((m, idx) => `<option value="${idx}" ${this.bossMoveIndex === idx ? "selected" : ""}>${titleCase(m.name)}</option>`).join("")}
                 </select>
               </div>
 
               <div class="battle-setting">
                 <span>Damage Roll:</span>
-                <select id="damage-roll-mode-select" style="min-height:28px; font-size:11px; background:var(--bg-card); border:1px solid var(--border); color:var(--text); border-radius:4px; padding: 2px 6px;">
+                <select id="damage-roll-mode-select" ${controlsLocked ? "disabled" : ""} style="min-height:28px; font-size:11px; background:var(--bg-card); border:1px solid var(--border); color:var(--text); border-radius:4px; padding: 2px 6px;">
                   <option value="random" ${(this.state.damageRollMode || "random") === "random" ? "selected" : ""}>Random Roll</option>
                   <option value="min" ${(this.state.damageRollMode || "random") === "min" ? "selected" : ""}>Min Roll</option>
                   <option value="average" ${(this.state.damageRollMode || "random") === "average" ? "selected" : ""}>Average Roll</option>
@@ -744,10 +752,10 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
 
               <div class="battle-utility-actions">
                 <button type="button" id="toggle-formula-btn" class="button" style="min-height:28px; padding: 2px 10px; font-size:10px; cursor:pointer;">Damage Formula</button>
-                <button id="undo-turn-btn" class="button" style="min-height:28px; padding: 2px 10px; font-size:10px; cursor:pointer;" ${this.state.history.length > 0 && !this.busy ? "" : "disabled"}>Undo Turn</button>
-                <button id="new-battle-btn" class="button" style="min-height:28px; padding: 2px 10px; font-size:10px; cursor:pointer;">New Battle</button>
-                <button id="reset-battle-btn" class="button danger-text" style="min-height:28px; padding: 2px 10px; font-size:10px; color:var(--danger); border-color:rgba(255,100,124,0.3); cursor:pointer;">Reset Battle</button>
-                <button id="back-to-builder-btn" class="button" style="min-height:28px; padding: 2px 10px; font-size:10px; cursor:pointer; border-color:var(--cyan); color:var(--cyan); background:rgba(8, 207, 233, 0.05);">Back to Team Builder</button>
+                <button type="button" id="undo-turn-btn" class="button" style="min-height:28px; padding: 2px 10px; font-size:10px; cursor:pointer;" ${this.state.history.length > 0 && !controlsLocked ? "" : "disabled"}>Undo Turn</button>
+                <button type="button" id="new-battle-btn" class="button" style="min-height:28px; padding: 2px 10px; font-size:10px; cursor:pointer;" ${controlsLocked ? "disabled" : ""}>New Battle</button>
+                <button type="button" id="reset-battle-btn" class="button danger-text" style="min-height:28px; padding: 2px 10px; font-size:10px; color:var(--danger); border-color:rgba(255,100,124,0.3); cursor:pointer;" ${controlsLocked ? "disabled" : ""}>Reset Battle</button>
+                <button type="button" id="back-to-builder-btn" class="button" style="min-height:28px; padding: 2px 10px; font-size:10px; cursor:pointer; border-color:var(--cyan); color:var(--cyan); background:rgba(8, 207, 233, 0.05);">Back to Team Builder</button>
               </div>
             </div>
           </div>
@@ -798,7 +806,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     // Party selection
     this.root.querySelectorAll(".party-member-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
-        if (this.busy) return;
+        if (this.controlsLocked()) return;
         const slot = Number(btn.dataset.slot);
         
         if (state.awaitingForcedSwitch) {
@@ -828,7 +836,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     // Baton targets selection
     this.root.querySelectorAll(".baton-target-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
-        if (this.busy) return;
+        if (this.controlsLocked()) return;
         const slot = Number(btn.dataset.slot);
         this.playerAction = "baton-pass";
         this.selectedSwitchSlot = slot;
@@ -854,7 +862,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     // Move buttons immediately execute on click
     this.root.querySelectorAll(".move-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
-        if (this.busy) return;
+        if (this.controlsLocked()) return;
         const idx = Number(btn.dataset.moveIdx);
         const isBatonPass = btn.dataset.batonPass === "true";
         
@@ -874,7 +882,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     // Z-Move button handler
     const zMoveBtn = this.root.querySelector("#z-move-btn");
     zMoveBtn?.addEventListener("click", () => {
-      if (this.busy) return;
+      if (this.controlsLocked()) return;
       const activeBuild = state.team[state.activeSlot];
       if (activeBuild && activeBuild.moves) {
         const idx = activeBuild.moves.findIndex((m) => m && m.name === "belly-drum");
@@ -929,13 +937,13 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     });
 
     this.root.querySelector("#undo-turn-btn")?.addEventListener("click", () => {
-      if (this.busy) return;
+      if (this.controlsLocked()) return;
       this.lastAnimatedTurn = Math.max(0, state.battleLog.length - 2);
       state.undoLastTurn();
     });
 
     this.root.querySelector("#new-battle-btn")?.addEventListener("click", () => {
-      if (this.busy) return;
+      if (this.controlsLocked()) return;
       try {
         state.startNewBattleFromCurrentSetup();
         state.battleActive = true;
@@ -949,7 +957,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     });
 
     this.root.querySelector("#reset-battle-btn")?.addEventListener("click", () => {
-      if (this.busy) return;
+      if (this.controlsLocked()) return;
       if (confirm("Reset current battle simulation?")) {
         this.lastAnimatedTurn = 0;
         state.resetBattle();
@@ -971,6 +979,8 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
   }
 
   executeActiveTurn() {
+    if (this.controlsLocked()) return;
+    this.state.isResolvingTurn = true;
     try {
       const terastallizeCheckbox = this.root.querySelector("#terastallize-checkbox");
       const shouldTera = terastallizeCheckbox ? terastallizeCheckbox.checked : false;
@@ -984,7 +994,9 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
       );
       this.shouldTerastallize = false;
     } catch (err) {
+      this.state.isResolvingTurn = false;
       alert(err.message);
+      this.render();
     }
   }
 
@@ -1041,111 +1053,114 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
 
   async playTurnAnimations(log) {
     this.busy = true;
-    
-    const playerMon = this.state.team[log.activeSlot];
-    const callout = document.querySelector("#battle-callout");
-    
-    const playerGoesFirst = log.playerMovedFirst;
-    const steps = [];
-    if (playerGoesFirst) {
-      steps.push({ side: "player", action: log.playerAction, moveName: log.playerMove, damage: log.playerDamage });
-      steps.push({ side: "boss", action: log.bossAction, moveName: log.bossMove, damage: log.bossDamage });
-    } else {
-      steps.push({ side: "boss", action: log.bossAction, moveName: log.bossMove, damage: log.bossDamage });
-      steps.push({ side: "player", action: log.playerAction, moveName: log.playerMove, damage: log.playerDamage });
-    }
-
-    for (const step of steps) {
-      if (step.side === "player") {
-        if (step.action === "switch" || step.action === "switch-forced" || step.action === "baton-pass") {
-          if (callout) {
-            callout.innerHTML = `<strong>Switch</strong><span>${displayName(playerMon.pokemon.name)} entered battle!</span>`;
-          }
-          const sprite = document.querySelector("#player-sprite");
-          if (sprite) {
-            sprite.style.opacity = "0";
-            sprite.style.transform = "scale(0.5)";
-            await new Promise(r => setTimeout(r, 200));
-            sprite.src = spriteUrl(playerMon.pokemon.name);
-            sprite.style.opacity = "1";
-            sprite.style.transform = "scale(1)";
-          }
-          await new Promise(r => setTimeout(r, 600));
-        } else if (step.action === "use-move") {
-          const moveData = playerMon.moves[this.selectedMoveIndex];
-          const isStatus = moveData && (moveData.damage_class?.name === "status" || !(moveData.customPower ?? moveData.basePower ?? moveData.power));
-
-          if (callout) {
-            callout.innerHTML = `<strong>${titleCase(step.moveName)}</strong><span>used by ${displayName(playerMon.pokemon.name)}</span>`;
-          }
-          
-          if (isStatus) {
-            this.triggerStatusGlow("player");
-          } else {
-            this.triggerAttack("player");
-          }
-          await new Promise(r => setTimeout(r, 200));
-          
-          if (step.damage > 0) {
-            this.showDamageFloat("boss", step.damage);
-            const bossHPAfterStep = Math.max(0, log.bossHPBefore - step.damage);
-            this.updateHPDisplay("boss", bossHPAfterStep, this.state.bossMaxHP);
-          }
-          await new Promise(r => setTimeout(r, 700));
-        }
+    try {
+      const playerMon = this.state.team[log.activeSlot];
+      const callout = document.querySelector("#battle-callout");
+      
+      const playerGoesFirst = log.playerMovedFirst;
+      const steps = [];
+      if (playerGoesFirst) {
+        steps.push({ side: "player", action: log.playerAction, moveName: log.playerMove, damage: log.playerDamage });
+        steps.push({ side: "boss", action: log.bossAction, moveName: log.bossMove, damage: log.bossDamage });
       } else {
-        if (this.state.bossHP <= 0 && step.damage === 0) continue; 
+        steps.push({ side: "boss", action: log.bossAction, moveName: log.bossMove, damage: log.bossDamage });
+        steps.push({ side: "player", action: log.playerAction, moveName: log.playerMove, damage: log.playerDamage });
+      }
 
-        if (step.action === "use-move") {
-          const bossMoveData = this.state.bossMoves[this.bossMoveIndex];
-          const isStatus = bossMoveData && (bossMoveData.damage_class?.name === "status" || !(bossMoveData.customPower ?? bossMoveData.basePower ?? bossMoveData.power));
+      for (const step of steps) {
+        if (step.side === "player") {
+          if (step.action === "switch" || step.action === "switch-forced" || step.action === "baton-pass") {
+            if (callout) {
+              callout.innerHTML = `<strong>Switch</strong><span>${displayName(playerMon.pokemon.name)} entered battle!</span>`;
+            }
+            const sprite = document.querySelector("#player-sprite");
+            if (sprite) {
+              sprite.style.opacity = "0";
+              sprite.style.transform = "scale(0.5)";
+              await new Promise(r => setTimeout(r, 200));
+              sprite.src = spriteUrl(playerMon.pokemon.name);
+              sprite.style.opacity = "1";
+              sprite.style.transform = "scale(1)";
+            }
+            await new Promise(r => setTimeout(r, 600));
+          } else if (step.action === "use-move") {
+            const moveData = playerMon.moves.find((move) => move?.name === log.playerMove) || playerMon.moves[this.selectedMoveIndex];
+            const isStatus = moveData && (moveData.damage_class?.name === "status" || !(moveData.customPower ?? moveData.basePower ?? moveData.power));
 
-          if (callout) {
-            callout.innerHTML = `<strong>${titleCase(step.moveName)}</strong><span>used by Boss</span>`;
+            if (callout) {
+              callout.innerHTML = `<strong>${titleCase(step.moveName)}</strong><span>used by ${displayName(playerMon.pokemon.name)}</span>`;
+            }
+            
+            if (isStatus) {
+              this.triggerStatusGlow("player");
+            } else {
+              this.triggerAttack("player");
+            }
+            await new Promise(r => setTimeout(r, 200));
+            
+            if (step.damage > 0) {
+              this.showDamageFloat("boss", step.damage);
+              const bossHPAfterStep = Math.max(0, log.bossHPBefore - step.damage);
+              this.updateHPDisplay("boss", bossHPAfterStep, this.state.bossMaxHP);
+            }
+            await new Promise(r => setTimeout(r, 700));
           }
-          
-          if (isStatus) {
-            this.triggerStatusGlow("boss");
-          } else {
-            this.triggerAttack("boss");
-          }
-          await new Promise(r => setTimeout(r, 200));
-          
-          if (step.damage > 0) {
-            this.showDamageFloat("player", step.damage);
-            const playerHPAfterStep = Math.max(0, log.playerHPAfter); 
-            this.updateHPDisplay("player", playerHPAfterStep, playerMon.stats.hp);
-          }
-          await new Promise(r => setTimeout(r, 700));
         } else {
-          if (callout) {
-            callout.innerHTML = `<strong>Do Nothing</strong><span>Boss did nothing</span>`;
+          if (this.state.bossHP <= 0 && step.damage === 0) continue; 
+
+          if (step.action === "use-move") {
+            const bossMoveData = this.state.bossMoves.find((move) => move?.name === log.bossMove) || this.state.bossMoves[this.bossMoveIndex];
+            const isStatus = bossMoveData && (bossMoveData.damage_class?.name === "status" || !(bossMoveData.customPower ?? bossMoveData.basePower ?? bossMoveData.power));
+
+            if (callout) {
+              callout.innerHTML = `<strong>${titleCase(step.moveName)}</strong><span>used by Boss</span>`;
+            }
+            
+            if (isStatus) {
+              this.triggerStatusGlow("boss");
+            } else {
+              this.triggerAttack("boss");
+            }
+            await new Promise(r => setTimeout(r, 200));
+            
+            if (step.damage > 0) {
+              this.showDamageFloat("player", step.damage);
+              const playerHPAfterStep = Math.max(0, log.playerHPAfter); 
+              this.updateHPDisplay("player", playerHPAfterStep, playerMon.stats.hp);
+            }
+            await new Promise(r => setTimeout(r, 700));
+          } else {
+            if (callout) {
+              callout.innerHTML = `<strong>Do Nothing</strong><span>Boss did nothing</span>`;
+            }
+            await new Promise(r => setTimeout(r, 650));
           }
-          await new Promise(r => setTimeout(r, 650));
         }
       }
-    }
 
-    if (log.notes.length > 0) {
-      for (const note of log.notes) {
-        if (callout) {
-          callout.innerHTML = `<strong>Battle Alert</strong><span style="font-size:10px; display:block; padding:4px;">${note}</span>`;
+      if (log.notes.length > 0) {
+        for (const note of log.notes) {
+          if (callout) {
+            callout.innerHTML = `<strong>Battle Alert</strong><span style="font-size:10px; display:block; padding:4px;">${note}</span>`;
+          }
+          if (note.includes("terastallized into the")) {
+            this.triggerStatusGlow("player");
+          }
+          await new Promise(r => setTimeout(r, 900));
         }
-        if (note.includes("terastallized into the")) {
-          this.triggerStatusGlow("player");
-        }
-        await new Promise(r => setTimeout(r, 900));
       }
-    }
 
-    this.lastAnimatedTurn = log.turn;
-    this.busy = false;
-    
-    // Reset selections after move execution
-    this.playerAction = "use-move";
-    this.selectedMoveIndex = 0;
-    
-    this.render(); 
+      this.lastAnimatedTurn = log.turn;
+    } finally {
+      this.busy = false;
+      this.state.isResolvingTurn = false;
+      
+      // Reset selections after move execution
+      this.playerAction = "use-move";
+      this.selectedMoveIndex = 0;
+      
+      this.render(); 
+    }
   }
 
   async simulateAll() {

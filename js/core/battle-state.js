@@ -110,6 +110,7 @@ export class BattleState extends EventTarget {
     this.savedBattleBroken = false;
     this.needsResume = false;
     this.uiMode = "builder";
+    this.isResolvingTurn = false;
 
     // Manual Overrides
     this.manualBossOverride = false;
@@ -234,6 +235,7 @@ export class BattleState extends EventTarget {
     this.history = [];
     this.battleActive = true;
     this.uiMode = "battle";
+    this.isResolvingTurn = false;
     this.awaitingForcedSwitch = false;
 
     this.playerSpeedOverrides = [null, null, null, null, null, null];
@@ -326,6 +328,7 @@ export class BattleState extends EventTarget {
   resetBattle() {
     this.battleActive = false;
     this.uiMode = "builder";
+    this.isResolvingTurn = false;
     this.currentTurn = 1;
     this.activeSlot = 0;
     this.needsResume = false;

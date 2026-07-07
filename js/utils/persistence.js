@@ -277,7 +277,7 @@ export class SetupPersistence extends EventTarget {
 
   scheduleAutosave() {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.save(false), 220);
+    this.timer = setTimeout(() => this.save(false), 400);
   }
 
   attach() {

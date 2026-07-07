@@ -129,7 +129,7 @@ export class TeamBuilder {
 
   tab(slot, index) {
     const selected = index === this.state.activeEditor;
-    return `<button class="team-tab ${selected ? "active" : ""}" role="tab" aria-selected="${selected}" data-slot-tab="${index}">
+    return `<button type="button" class="team-tab ${selected ? "active" : ""}" role="tab" aria-selected="${selected}" data-slot-tab="${index}">
       <span class="slot-number">0${index + 1}</span>
       ${slot.pokemon ? `<img src="${spriteUrl(slot.pokemon.name)}" data-fallback="${fallbackSprite(slot.pokemon)}" alt="">` : `<span class="empty-ball">+</span>`}
       <span class="tab-copy"><strong>${slot.pokemon ? displayName(slot.pokemon.name) : "Empty slot"}</strong><small>${slot.pokemon ? `${titleCase(slot.item || "No item")} · ${titleCase(slot.ability || "No ability")}` : "Add Pokémon"}</small></span>
@@ -308,12 +308,14 @@ export class TeamBuilder {
     table.addEventListener("input", (event) => {
       const target = event.target;
       if (!target.matches("[data-stat-input]")) return;
-      this.updateSpreadValue(build, target.dataset.stat, target.dataset.field, target.value);
+      this.updateStatInput(this.state.activeEditor, target.dataset.stat, target.dataset.field, target.value);
     });
   }
 
-  updateSpreadValue(build, stat, field, rawValue) {
+  updateStatInput(slotIndex, stat, field, rawValue) {
     if (!STAT_KEYS.includes(stat) || !["ev", "iv"].includes(field)) return;
+    const build = this.state.team[slotIndex];
+    if (!build?.pokemon) return;
     const group = field === "ev" ? "evs" : "ivs";
     const value = normalizeSpreadValue(field, rawValue);
     build[group][stat] = value;
@@ -321,7 +323,24 @@ export class TeamBuilder {
       input.value = value;
     });
     this.updateEvTotal(build);
-    this.recalculate(build);
+    this.renderStatPreviewOnly(build);
+    this.persistence?.scheduleAutosave();
+  }
+
+  updateSpreadValue(build, stat, field, rawValue) {
+    const slotIndex = this.state.team.indexOf(build);
+    this.updateStatInput(slotIndex >= 0 ? slotIndex : this.state.activeEditor, stat, field, rawValue);
+  }
+
+  renderStatPreviewOnly(build) {
+    if (typeof build.nature !== "string" || !NATURES[build.nature.toLowerCase()]) {
+      build.nature = "hardy";
+    } else {
+      build.nature = build.nature.toLowerCase();
+    }
+    build.stats = calculatePokemonStats(build.pokemon, build);
+    const statsNode = this.root.querySelector("#calculated-stats");
+    if (statsNode) statsNode.innerHTML = this.statsMarkup(build);
   }
 
   evTotal(build) {

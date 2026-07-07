@@ -498,7 +498,7 @@ export class BossPanel {
       this.state.emit("boss");
       this.render();
     } catch (error) {
-      this.root.innerHTML = `<section class="panel error-state"><h2>Boss link interrupted</h2><p>${error.message}. Check your connection and retry.</p><button id="retry-boss" class="button primary">Retry</button></section>`;
+      this.root.innerHTML = `<section class="panel error-state"><h2>Boss link interrupted</h2><p>${error.message}. Check your connection and retry.</p><button type="button" id="retry-boss" class="button primary">Retry</button></section>`;
       this.root.querySelector("#retry-boss")?.addEventListener("click", () => this.load(name));
     } finally {
       this.root.classList.remove("is-loading");
