@@ -65,6 +65,15 @@ const prepareMove = (move) => move ? {
   basePower: move.power ?? null,
   customPower: move.power ?? null,
 } : null;
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const normalizeSpreadValue = (field, rawValue) => {
+  const numeric = Number(rawValue);
+  const safeValue = Number.isFinite(numeric) ? numeric : 0;
+  if (field === "ev") {
+    return clamp(Math.round(clamp(safeValue, 0, 252) / 4) * 4, 0, 252);
+  }
+  return clamp(Math.round(safeValue), 0, 31);
+};
 
 export class TeamBuilder {
   constructor(root, state, persistence = null) {
@@ -167,15 +176,20 @@ export class TeamBuilder {
         <div class="numbers-column">
           <div class="calculated-stats" id="calculated-stats">${this.statsMarkup(build)}</div>
           <div class="spread-table">
-            <div class="spread-head"><span>Stat</span><span>EV</span><span>IV</span><span>Stage</span></div>
-            ${STAT_KEYS.map((key) => `<div class="spread-row">
+            <div class="spread-head stat-row"><span>Stat</span><span>EV</span><span></span><span>IV</span><span></span><span>Stage</span></div>
+            ${STAT_KEYS.map((key) => `<div class="spread-row stat-row">
               <strong>${key.toUpperCase()}</strong>
-              <label><span class="sr-only">${key} EV</span><input type="range" min="0" max="252" step="4" value="${build.evs[key]}" data-spread="evs" data-stat="${key}"><input type="number" min="0" max="252" step="4" value="${build.evs[key]}" data-number="evs" data-stat="${key}"></label>
-              <label><span class="sr-only">${key} IV</span><input type="range" min="0" max="31" value="${build.ivs[key]}" data-spread="ivs" data-stat="${key}"><input type="number" min="0" max="31" value="${build.ivs[key]}" data-number="ivs" data-stat="${key}"></label>
+              <label class="spread-control spread-control-ev"><span class="sr-only">${key} EV slider</span><input type="range" min="0" max="252" step="4" value="${build.evs[key]}" data-stat-input data-control="range" data-field="ev" data-stat="${key}"></label>
+              <input class="spread-number spread-number-ev" aria-label="${key} EV value" type="number" inputmode="numeric" min="0" max="252" step="4" value="${build.evs[key]}" data-stat-input data-control="number" data-field="ev" data-stat="${key}">
+              <label class="spread-control spread-control-iv"><span class="sr-only">${key} IV slider</span><input type="range" min="0" max="31" step="1" value="${build.ivs[key]}" data-stat-input data-control="range" data-field="iv" data-stat="${key}"></label>
+              <input class="spread-number spread-number-iv" aria-label="${key} IV value" type="number" inputmode="numeric" min="0" max="31" step="1" value="${build.ivs[key]}" data-stat-input data-control="number" data-field="iv" data-stat="${key}">
               ${key === "hp"
                 ? `<select aria-label="HP has no stat stage" disabled><option>—</option></select>`
                 : `<select data-stage="${key}" aria-label="${key} initial stage">${Array.from({length:13},(_,i)=>i-6).map((value) => `<option value="${value}" ${build.stages[key] === value ? "selected" : ""}>${value > 0 ? "+" : ""}${value}</option>`).join("")}</select>`}
             </div>`).join("")}
+            <div class="ev-total ${this.evTotal(build) > 510 ? "over" : ""}" id="ev-total" role="status">
+              <span>Total EVs</span><strong>${this.evTotal(build)} / 510</strong>${this.evTotal(build) > 510 ? `<em>EV total exceeds 510.</em>` : ""}
+            </div>
           </div>
         </div>
       </div>`;
@@ -275,14 +289,7 @@ export class TeamBuilder {
       build.metronomeMultiplier = Math.max(1, Math.min(2, Number(event.target.value) || 1));
       this.state.emit("damage-input");
     });
-    this.root.querySelectorAll("[data-spread], [data-number]").forEach((input) => input.addEventListener("input", (event) => {
-      const group = event.target.dataset.spread || event.target.dataset.number;
-      const stat = event.target.dataset.stat;
-      const max = group === "evs" ? 252 : 31;
-      build[group][stat] = Math.max(0, Math.min(max, Number(event.target.value)));
-      this.root.querySelectorAll(`[data-stat="${stat}"][data-${event.target.dataset.spread ? "number" : "spread"}="${group}"]`).forEach((peer) => peer.value = build[group][stat]);
-      this.recalculate(build);
-    }));
+    this.bindSpreadEditor(build);
     this.root.querySelectorAll("[data-stage]").forEach((select) => select.addEventListener("change", (event) => {
       build.stages[event.target.dataset.stage] = Number(event.target.value);
       this.state.emit("team");
@@ -293,6 +300,40 @@ export class TeamBuilder {
       if (existingIndex >= 0) return;
       await this.selectMove(build, emptyIndex >= 0 ? emptyIndex : 0, button.dataset.quickMove);
     }));
+  }
+
+  bindSpreadEditor(build) {
+    const table = this.root.querySelector(".spread-table");
+    if (!table) return;
+    table.addEventListener("input", (event) => {
+      const target = event.target;
+      if (!target.matches("[data-stat-input]")) return;
+      this.updateSpreadValue(build, target.dataset.stat, target.dataset.field, target.value);
+    });
+  }
+
+  updateSpreadValue(build, stat, field, rawValue) {
+    if (!STAT_KEYS.includes(stat) || !["ev", "iv"].includes(field)) return;
+    const group = field === "ev" ? "evs" : "ivs";
+    const value = normalizeSpreadValue(field, rawValue);
+    build[group][stat] = value;
+    this.root.querySelectorAll(`[data-stat-input][data-stat="${stat}"][data-field="${field}"]`).forEach((input) => {
+      input.value = value;
+    });
+    this.updateEvTotal(build);
+    this.recalculate(build);
+  }
+
+  evTotal(build) {
+    return STAT_KEYS.reduce((total, stat) => total + (Number(build.evs[stat]) || 0), 0);
+  }
+
+  updateEvTotal(build) {
+    const node = this.root.querySelector("#ev-total");
+    if (!node) return;
+    const total = this.evTotal(build);
+    node.classList.toggle("over", total > 510);
+    node.innerHTML = `<span>Total EVs</span><strong>${total} / 510</strong>${total > 510 ? `<em>EV total exceeds 510.</em>` : ""}`;
   }
 
   updatePersistenceStatus(message) {

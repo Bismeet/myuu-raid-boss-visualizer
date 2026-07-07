@@ -199,6 +199,10 @@ export class SetupPersistence extends EventTarget {
           player: [...this.state.battleSpeed.player],
           boss: this.state.battleSpeed.boss
         },
+        abilityOverrides: {
+          player: [...this.state.abilityOverrides.player],
+          boss: this.state.abilityOverrides.boss
+        },
         
         // Consumed items
         consumedItems: {
@@ -249,6 +253,10 @@ export class SetupPersistence extends EventTarget {
           battleLog: [...s.battleLog],
           bossStats: s.bossStats ? { ...s.bossStats } : null,
           teamStats: s.teamStats.map(st => ({ ...st })),
+          abilityOverridesSnapshot: s.abilityOverridesSnapshot ? {
+            player: [...s.abilityOverridesSnapshot.player],
+            boss: s.abilityOverridesSnapshot.boss
+          } : null,
         })),
         
         needsResume: this.state.needsResume,
@@ -406,6 +414,10 @@ export class SetupPersistence extends EventTarget {
         player: Array.isArray(battle.battleSpeed?.player) ? [...battle.battleSpeed.player] : [null, null, null, null, null, null],
         boss: battle.battleSpeed?.boss !== undefined ? battle.battleSpeed.boss : null
       };
+      this.state.abilityOverrides = {
+        player: Array.isArray(battle.abilityOverrides?.player) ? [...battle.abilityOverrides.player] : [null, null, null, null, null, null],
+        boss: battle.abilityOverrides?.boss || null
+      };
       
       // Consumed items
       this.state.consumedItems = {
@@ -479,6 +491,10 @@ export class SetupPersistence extends EventTarget {
       this.state.playerSpeedOverrides = [null, null, null, null, null, null];
       this.state.bossSpeedOverride = null;
       this.state.battleSpeed = {
+        player: [null, null, null, null, null, null],
+        boss: null
+      };
+      this.state.abilityOverrides = {
         player: [null, null, null, null, null, null],
         boss: null
       };

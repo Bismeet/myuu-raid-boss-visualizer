@@ -111,6 +111,12 @@ export const ABILITY_EFFECTS = {
     status: "Implemented",
     description: "Speed ×2 after held item is consumed.",
   },
+  simple: {
+    id: "simple",
+    name: "Simple",
+    status: "Implemented",
+    description: "Doubles stat stage changes applied to this Pokemon.",
+  },
   "mold-breaker": {
     id: "mold-breaker",
     name: "Mold Breaker",

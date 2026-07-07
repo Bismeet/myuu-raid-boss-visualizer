@@ -159,14 +159,16 @@ export const ITEM_EFFECTS = {
     description: "Heals 10 HP when HP drops below 50%.",
     hooks: {
       onTurnEnd(ctx) {
+        if (ctx.state.consumedItems?.player?.[ctx.slot]) return null;
         const maxHP = ctx.attackerBuild.stats.hp;
         const currentHP = ctx.state.teamHP[ctx.slot];
         if (currentHP > 0 && currentHP < Math.floor(maxHP / 2)) {
           const heal = 10;
           const newHP = Math.min(maxHP, currentHP + heal);
           ctx.state.teamHP[ctx.slot] = newHP;
-          // Consume item for this battle
-          ctx.attackerBuild.item = ""; 
+          if (ctx.state.consumedItems?.player) {
+            ctx.state.consumedItems.player[ctx.slot] = true;
+          }
           return `${displayName(ctx.attackerBuild.pokemon.name)} consumed Oran Berry and healed ${newHP - currentHP} HP.`;
         }
       }
@@ -178,14 +180,16 @@ export const ITEM_EFFECTS = {
     description: "Heals 25% max HP when HP drops below 50%.",
     hooks: {
       onTurnEnd(ctx) {
+        if (ctx.state.consumedItems?.player?.[ctx.slot]) return null;
         const maxHP = ctx.attackerBuild.stats.hp;
         const currentHP = ctx.state.teamHP[ctx.slot];
         if (currentHP > 0 && currentHP < Math.floor(maxHP / 2)) {
           const heal = Math.floor(maxHP / 4);
           const newHP = Math.min(maxHP, currentHP + heal);
           ctx.state.teamHP[ctx.slot] = newHP;
-          // Consume item for this battle
-          ctx.attackerBuild.item = ""; 
+          if (ctx.state.consumedItems?.player) {
+            ctx.state.consumedItems.player[ctx.slot] = true;
+          }
           return `${displayName(ctx.attackerBuild.pokemon.name)} consumed Sitrus Berry and healed ${newHP - currentHP} HP.`;
         }
       }

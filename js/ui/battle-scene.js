@@ -1,6 +1,6 @@
 import { copyText, displayName, fallbackSprite, spriteUrl, titleCase, getBossDisplayName } from "../utils/format.js";
 import { compactNumber } from "../utils/format.js";
-import { getEffectiveSpeed } from "../core/battle-state.js";
+import { getAbilityOverride, getEffectiveAbility, getEffectiveSpeed } from "../core/battle-state.js";
 import { ABILITY_EFFECTS } from "../data/ability-effects.js";
 import { applyStage } from "../core/stages.js";
 
@@ -15,22 +15,26 @@ function getBossTooltipHTML(state) {
   const stages = state.bossStages;
 
   const bossAbility = state.bossAbility || "";
-  const effect = ABILITY_EFFECTS[bossAbility];
+  const bossAbilityOverride = getAbilityOverride({ isBoss: true }, state);
+  const effectiveBossAbility = getEffectiveAbility({ isBoss: true }, state);
+  const effect = ABILITY_EFFECTS[effectiveBossAbility];
   let abilityInfoHTML = "";
-  if (bossAbility) {
-    const name = effect ? effect.name : titleCase(bossAbility);
+  if (bossAbility || effectiveBossAbility) {
+    const name = effect ? effect.name : titleCase(effectiveBossAbility || bossAbility);
     const status = effect ? effect.status : "Display Only";
     const description = effect ? effect.description : "No special battle effect.";
     
     // Check if currently active:
     let isActive = "Yes";
-    if (bossAbility === "sturdy" || bossAbility === "multiscale" || bossAbility === "shadow-shield") {
+    if (effectiveBossAbility === "sturdy" || effectiveBossAbility === "multiscale" || effectiveBossAbility === "shadow-shield") {
       isActive = (state.bossHP === state.bossMaxHP) ? "Yes" : "No";
     }
     
     abilityInfoHTML = `
       <div style="margin-top: 8px; border-top: 1px solid var(--border-soft); padding-top: 6px; font-size: 9px; line-height: 1.3;">
-        <strong>Ability:</strong> ${name}<br>
+        <strong>Original Ability:</strong> ${bossAbility ? titleCase(bossAbility) : "None"}<br>
+        <strong>Current Ability:</strong> ${name}<br>
+        ${bossAbilityOverride ? `<strong>Changed by:</strong> Simple Beam<br>` : ""}
         <strong>Status:</strong> <span style="color: ${status === 'Implemented' ? 'var(--success)' : (status === 'TODO' ? 'var(--danger)' : 'var(--amber)')}; font-weight:800;">${status}</span><br>
         <strong>Effect:</strong> ${description}<br>
         <strong>Currently active:</strong> ${isActive}
@@ -123,26 +127,30 @@ function getPlayerTooltipHTML(state) {
   const stages = state.teamStages[state.activeSlot];
 
   const playerAbility = activeMon.ability || "";
-  const effect = ABILITY_EFFECTS[playerAbility];
+  const playerAbilityOverride = getAbilityOverride({ slotIndex: state.activeSlot, isBoss: false }, state);
+  const effectivePlayerAbility = getEffectiveAbility({ slotIndex: state.activeSlot, isBoss: false }, state);
+  const effect = ABILITY_EFFECTS[effectivePlayerAbility];
   let abilityInfoHTML = "";
-  if (playerAbility) {
-    const name = effect ? effect.name : titleCase(playerAbility);
+  if (playerAbility || effectivePlayerAbility) {
+    const name = effect ? effect.name : titleCase(effectivePlayerAbility || playerAbility);
     const status = effect ? effect.status : "Display Only";
     const description = effect ? effect.description : "No special battle effect.";
     
     // Check if currently active:
     let isActive = "Yes";
-    if (playerAbility === "sturdy" || playerAbility === "multiscale" || playerAbility === "shadow-shield") {
+    if (effectivePlayerAbility === "sturdy" || effectivePlayerAbility === "multiscale" || effectivePlayerAbility === "shadow-shield") {
       const currentHP = state.teamHP[state.activeSlot];
       const maxHP = activeMon.stats.hp;
       isActive = (currentHP > 0 && currentHP === maxHP) ? "Yes" : "No";
-    } else if (playerAbility === "unburden") {
+    } else if (effectivePlayerAbility === "unburden") {
       isActive = state.consumedItems.player[state.activeSlot] ? "Yes" : "No";
     }
     
     abilityInfoHTML = `
       <div style="margin-top: 8px; border-top: 1px solid var(--border-soft); padding-top: 6px; font-size: 9px; line-height: 1.3;">
-        <strong>Ability:</strong> ${name}<br>
+        <strong>Original Ability:</strong> ${playerAbility ? titleCase(playerAbility) : "None"}<br>
+        <strong>Current Ability:</strong> ${name}<br>
+        ${playerAbilityOverride ? `<strong>Changed by:</strong> Simple Beam<br>` : ""}
         <strong>Status:</strong> <span style="color: ${status === 'Implemented' ? 'var(--success)' : (status === 'TODO' ? 'var(--danger)' : 'var(--amber)')}; font-weight:800;">${status}</span><br>
         <strong>Effect:</strong> ${description}<br>
         <strong>Currently active:</strong> ${isActive}

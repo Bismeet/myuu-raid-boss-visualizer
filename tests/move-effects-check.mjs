@@ -1,4 +1,4 @@
-import { BattleState } from "../js/core/battle-state.js";
+import { BattleState, getEffectiveAbility } from "../js/core/battle-state.js";
 import { calculatePokemonStats } from "../js/core/stats.js";
 import { emptyStages } from "../js/core/stages.js";
 
@@ -27,7 +27,7 @@ const smeargle = {
 const mewtwo = {
   name: "mewtwo",
   types: [{ type: { name: "psychic" } }],
-  abilities: [],
+  abilities: [{ ability: { name: "pressure" } }],
   moves: [
     { move: { name: "psystrike" } }
   ],
@@ -218,6 +218,94 @@ const postScreechDmg = state.battleLog.at(-1).damageDetails.damage;
 console.log(`Physical Damage -> Before Screech: ${baseDmg}, After Screech: ${postScreechDmg}`);
 if (postScreechDmg <= baseDmg) {
   throw new Error(`Physical damage should increase after Screech. Before: ${baseDmg}, After: ${postScreechDmg}`);
+}
+
+// Test H: Simple Beam and Simple ability stage changes
+function buildSimpleState() {
+  const simpleState = new BattleState();
+  simpleState.team[0].pokemon = smeargle;
+  simpleState.team[0].level = 100;
+  simpleState.team[0].item = "";
+  simpleState.team[0].ability = "own-tempo";
+  simpleState.team[0].moves[0] = { name: "simple-beam", type: { name: "normal" }, damage_class: { name: "status" } };
+  simpleState.team[0].moves[1] = { name: "screech", type: { name: "normal" }, damage_class: { name: "status" } };
+  simpleState.team[0].moves[2] = { name: "swords-dance", type: { name: "normal" }, damage_class: { name: "status" } };
+  simpleState.team[0].moves[3] = { name: "speed-swap", type: { name: "psychic" }, damage_class: { name: "status" } };
+  simpleState.team[0].stats = calculatePokemonStats(smeargle, simpleState.team[0]);
+
+  const simpleBossStats = calculatePokemonStats(mewtwo, { level: 200, nature: "hardy", ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 }, evs: { hp: 252, atk: 252, def: 252, spa: 252, spd: 252, spe: 252 } });
+  simpleBossStats.hp = 1060000;
+  simpleState.setBoss(mewtwo, simpleBossStats);
+  simpleState.bossMoves[0] = { name: "simple-beam", type: { name: "normal" }, damage_class: { name: "status" } };
+  simpleState.startBattle();
+  return simpleState;
+}
+
+const simpleState = buildSimpleState();
+simpleState.executeTurn("use-move", 0, 0, "do-nothing", 0);
+if (simpleState.abilityOverrides.boss !== "simple") {
+  throw new Error("Simple Beam did not set boss ability override to Simple.");
+}
+if (getEffectiveAbility({ isBoss: true }, simpleState) !== "simple") {
+  throw new Error("Boss effective ability should be Simple after Simple Beam.");
+}
+
+simpleState.executeTurn("use-move", 1, 0, "do-nothing", 0);
+if (simpleState.bossStages.def !== -4) {
+  throw new Error(`Screech on a Simple boss should lower Defense by 4. Got: ${simpleState.bossStages.def}`);
+}
+
+simpleState.bossStages.def = -4;
+simpleState.executeTurn("use-move", 1, 0, "do-nothing", 0);
+if (simpleState.bossStages.def !== -6) {
+  throw new Error(`Simple stage drops should still cap at -6. Got: ${simpleState.bossStages.def}`);
+}
+
+simpleState.startNewBattleFromCurrentSetup();
+if (simpleState.abilityOverrides.boss !== null || simpleState.abilityOverrides.player.some(Boolean)) {
+  throw new Error("New Battle did not reset ability overrides.");
+}
+
+const simpleUserState = buildSimpleState();
+simpleUserState.executeTurn("do-nothing", 0, 0, "use-move", 0);
+if (getEffectiveAbility({ slotIndex: 0, isBoss: false }, simpleUserState) !== "simple") {
+  throw new Error("Boss Simple Beam did not make the active player's effective ability Simple.");
+}
+simpleUserState.executeTurn("use-move", 2, 0, "do-nothing", 0);
+if (simpleUserState.teamStages[0].atk !== 4) {
+  throw new Error(`Swords Dance by a Simple user should raise Attack by 4. Got: ${simpleUserState.teamStages[0].atk}`);
+}
+simpleUserState.executeTurn("use-move", 2, 0, "do-nothing", 0);
+if (simpleUserState.teamStages[0].atk !== 6) {
+  throw new Error(`Simple stage raises should still cap at +6. Got: ${simpleUserState.teamStages[0].atk}`);
+}
+
+const splitState = buildSimpleState();
+splitState.abilityOverrides.boss = "simple";
+splitState.team[0].moves[0] = { name: "guard-split", type: { name: "psychic" }, damage_class: { name: "status" } };
+splitState.team[0].moves[1] = { name: "power-split", type: { name: "psychic" }, damage_class: { name: "status" } };
+const splitUserDef = splitState.team[0].currentStats.def;
+const splitBossDef = splitState.bossCurrentStats.def;
+splitState.executeTurn("use-move", 0, 0, "do-nothing", 0);
+const expectedSimpleGuardDef = Math.floor((splitUserDef + splitBossDef) / 2);
+if (splitState.bossCurrentStats.def !== expectedSimpleGuardDef) {
+  throw new Error("Guard Split should average stats normally even when the boss has Simple.");
+}
+const splitUserAtk = splitState.team[0].currentStats.atk;
+const splitBossAtk = splitState.bossCurrentStats.atk;
+splitState.executeTurn("use-move", 1, 0, "do-nothing", 0);
+const expectedSimplePowerAtk = Math.floor((splitUserAtk + splitBossAtk) / 2);
+if (splitState.bossCurrentStats.atk !== expectedSimplePowerAtk) {
+  throw new Error("Power Split should average stats normally even when the boss has Simple.");
+}
+
+const speedSwapState = buildSimpleState();
+speedSwapState.abilityOverrides.boss = "simple";
+const speedSwapUserSpe = speedSwapState.team[0].currentStats.spe;
+const speedSwapBossSpe = speedSwapState.bossCurrentStats.spe;
+speedSwapState.executeTurn("use-move", 3, 0, "do-nothing", 0);
+if (speedSwapState.playerSpeedOverrides[0] !== speedSwapBossSpe || speedSwapState.bossSpeedOverride !== speedSwapUserSpe) {
+  throw new Error("Speed Swap should swap raw effective speeds normally when Simple is present.");
 }
 
 console.log("All move effects checks passed successfully!");

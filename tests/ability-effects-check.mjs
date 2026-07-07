@@ -431,8 +431,11 @@ async function testSturdyAndUnburden() {
   if (state3.teamHP[0] !== 1) {
     throw new Error("Shieldon should survive on Focus Sash.");
   }
-  if (state3.team[0].item !== "") {
-    throw new Error("Focus Sash should be consumed (cleared).");
+  if (state3.team[0].item !== "focus-sash") {
+    throw new Error("Focus Sash should remain selected in Team Builder after battle consumption.");
+  }
+  if (!state3.consumedItems.player[0]) {
+    throw new Error("Focus Sash should be marked consumed in battle state.");
   }
 
   const speedAfterItemConsumed = getEffectiveSpeed({ slotIndex: 0 }, state3);

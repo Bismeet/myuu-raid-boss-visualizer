@@ -35,6 +35,7 @@ const mewtwo = {
 
 const state = new BattleState();
 state.team[0].pokemon = abra;
+state.team[0].item = "custap-berry";
 state.team[0].stats = calculatePokemonStats(abra, state.team[0]);
 
 const bossStats = calculatePokemonStats(mewtwo, { level: 200, nature: "hardy", ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 }, evs: { hp: 252, atk: 252, def: 252, spa: 252, spd: 252, spe: 252 } });
@@ -51,6 +52,8 @@ state.battleLog.push({ turn: 1, pokemon: "abra", notes: ["Testing notes"], playe
 state.consumedItems.player[0] = true;
 state.playerSpeedOverrides[0] = 587;
 state.bossSpeedOverride = 7;
+state.abilityOverrides.player[0] = "simple";
+state.abilityOverrides.boss = "simple";
 
 // Call startNewBattleFromCurrentSetup
 state.startNewBattleFromCurrentSetup();
@@ -63,6 +66,7 @@ console.log("- teamHP[0]:", state.teamHP[0]);
 console.log("- battleLog length:", state.battleLog.length);
 console.log("- playerSpeedOverrides[0]:", state.playerSpeedOverrides[0]);
 console.log("- consumedItems.player[0]:", state.consumedItems.player[0]);
+console.log("- abilityOverrides.player[0]:", state.abilityOverrides.player[0]);
 
 if (!state.battleActive) {
   throw new Error("New Battle did not set battleActive to true.");
@@ -85,6 +89,12 @@ if (state.playerSpeedOverrides[0] !== null || state.bossSpeedOverride !== null) 
 if (state.consumedItems.player[0] !== false) {
   throw new Error("New Battle did not reset consumed items.");
 }
+if (state.team[0].item !== "custap-berry") {
+  throw new Error("New Battle should keep the Team Builder item selected.");
+}
+if (state.abilityOverrides.player[0] !== null || state.abilityOverrides.boss !== null) {
+  throw new Error("New Battle did not reset ability overrides.");
+}
 if (state.boss.name !== "mewtwo" || state.team[0].pokemon.name !== "abra") {
   throw new Error("New Battle modified the team or boss setup.");
 }
@@ -95,6 +105,12 @@ if (state.uiMode !== "battle") {
 state.resetBattle();
 if (state.uiMode !== "builder") {
   throw new Error("Reset Battle did not set uiMode to builder.");
+}
+if (state.consumedItems.player[0] !== false) {
+  throw new Error("Reset Battle did not clear consumed item state.");
+}
+if (state.team[0].item !== "custap-berry") {
+  throw new Error("Reset Battle should keep the Team Builder item selected.");
 }
 
 state.startBattle();

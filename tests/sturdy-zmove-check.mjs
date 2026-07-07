@@ -160,6 +160,9 @@ async function testZBellyDrum() {
   if (state.zMoveUsed.player[0] !== true) {
     throw new Error("Z-Move should be marked as used.");
   }
+  if (state.team[0].item !== "normalium-z") {
+    throw new Error("Normalium Z should remain selected in Team Builder after Z-Move use.");
+  }
 
   console.log("Z-Belly Drum mechanics checks PASSED.");
 }

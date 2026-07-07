@@ -258,13 +258,23 @@ label > span, legend { display: block; margin-bottom: 5px; color: var(--muted); 
 .calculated-stats { grid-template-columns: repeat(6, 1fr); margin-bottom: 12px; }
 .calculated-stats > div { padding: 10px 2px; }
 .spread-table { overflow: hidden; border: 1px solid var(--border-soft); border-radius: 8px; }
-.spread-head, .spread-row { display: grid; grid-template-columns: 44px 1fr 1fr 62px; gap: 8px; align-items: center; padding: 8px; }
+.spread-head, .spread-row { display: grid; align-items: center; padding: 8px; }
+.stat-row { grid-template-columns: 44px minmax(96px, 1fr) 60px minmax(96px, 1fr) 60px 70px; gap: 8px; }
 .spread-head { color: var(--faint); background: #0a1620; font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .spread-row { border-top: 1px solid var(--border-soft); }
 .spread-row > strong { font-size: 10px; }
-.spread-row label { display: grid; grid-template-columns: 1fr 48px; gap: 5px; align-items: center; }
-.spread-row input[type="range"] { min-height: 22px; padding: 0; accent-color: var(--cyan); }
-.spread-row input[type="number"], .spread-row select { min-height: 30px; padding: 4px; font-size: 10px; text-align: center; }
+.spread-control { min-width: 0; margin: 0; }
+.spread-control input[type="range"] { width: 100%; min-width: 0; height: 30px; min-height: 30px; padding: 0; accent-color: var(--cyan); cursor: pointer; }
+.spread-control input[type="range"]::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: var(--surface-3); }
+.spread-control input[type="range"]::-webkit-slider-thumb { margin-top: -6px; }
+.spread-control input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: var(--surface-3); }
+.spread-control input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; }
+.spread-number { width: 60px; min-height: 30px; padding: 4px; font-size: 10px; text-align: center; }
+.spread-row select { width: 70px; min-height: 30px; padding: 4px; font-size: 10px; text-align: center; }
+.ev-total { display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding: 8px; border-top: 1px solid var(--border-soft); color: var(--muted); font-size: 10px; }
+.ev-total span { font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.ev-total strong { color: var(--text); }
+.ev-total em { color: var(--danger); font-style: normal; font-weight: 800; }
 
 .battle-module { margin-top: 18px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .battle-toolbar { padding: 13px 15px; border-bottom: 1px solid var(--border); }
@@ -403,9 +413,23 @@ td small { display: block; margin-top: 2px; color: var(--faint); white-space: no
   input, select { font-size: 16px; }
   .move-grid select, .spread-row input, .spread-row select, .turn-controls select { font-size: 12px; }
   .calculated-stats { grid-template-columns: repeat(3, 1fr); }
-  .spread-head, .spread-row { grid-template-columns: 36px 1fr 1fr 52px; gap: 4px; padding: 6px 4px; }
-  .spread-row label { grid-template-columns: 1fr; }
-  .spread-row input[type="range"] { display: none; }
+  .spread-head { display: none; }
+  .spread-row.stat-row {
+    grid-template-columns: 40px minmax(0, 1fr) 56px;
+    grid-template-areas:
+      "stat evrange evnum"
+      "stage ivrange ivnum";
+    gap: 7px 8px;
+    padding: 8px 6px;
+  }
+  .spread-row > strong { grid-area: stat; }
+  .spread-control-ev { grid-area: evrange; }
+  .spread-number-ev { grid-area: evnum; }
+  .spread-control-iv { grid-area: ivrange; }
+  .spread-number-iv { grid-area: ivnum; }
+  .spread-row select { grid-area: stage; width: 40px; min-width: 0; }
+  .spread-number { width: 56px; }
+  .ev-total { align-items: flex-end; flex-direction: column; gap: 3px; }
   .battle-toolbar, .summary-heading { align-items: start; flex-direction: column; }
   .battle-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
   .battlefield { grid-template-columns: 1fr 1fr; min-height: 260px; padding: 70px 10px 12px; }

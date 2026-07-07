@@ -55,6 +55,7 @@ async function runTests() {
     const state = new BattleState();
     state.team[0].pokemon = { name: "abra" };
     state.team[0].level = 100;
+    state.team[0].item = "focus-sash";
     state.team[0].stats = { hp: 300, atk: 50, def: 30, spa: 200, spd: 100, spe: 18 };
     
     const bossStats = { hp: 1_060_000, atk: 507, def: 1009, spa: 683, spd: 1009, spe: 587 };
@@ -78,6 +79,13 @@ async function runTests() {
     if (saved.battle.currentTurn !== 5) throw new Error("Current turn not saved");
     if (saved.battle.bossHP !== 500000) throw new Error("Boss HP not saved");
     if (saved.battle.playerSpeedOverrides[0] !== 587) throw new Error("Speed override not saved");
+    if (saved.setup.team[0].item !== "focus-sash") throw new Error("Setup item was corrupted by consumed battle state");
+    if (saved.battle.consumedItems.player[0] !== true) throw new Error("Consumed battle item state not saved");
+
+    persistence.save(true, false);
+    const setupOnly = JSON.parse(localStorage.getItem(SETUP_STORAGE_KEY));
+    if (setupOnly.setup.team[0].item !== "focus-sash") throw new Error("Setup-only save did not preserve planned item");
+    if (setupOnly.battle !== null) throw new Error("Setup-only save should not include consumed battle state");
     console.log("Test 2 PASSED: Full battle state save works correctly");
   }
 

@@ -85,6 +85,10 @@ export class BattleState extends EventTarget {
       player: [null, null, null, null, null, null],
       boss: null
     };
+    this.abilityOverrides = {
+      player: [null, null, null, null, null, null],
+      boss: null
+    };
     this.consumedItems = {
       player: [false, false, false, false, false, false],
       boss: false
@@ -235,6 +239,10 @@ export class BattleState extends EventTarget {
     this.playerSpeedOverrides = [null, null, null, null, null, null];
     this.bossSpeedOverride = null;
     this.battleSpeed = {
+      player: [null, null, null, null, null, null],
+      boss: null
+    };
+    this.abilityOverrides = {
       player: [null, null, null, null, null, null],
       boss: null
     };
@@ -396,6 +404,10 @@ export class BattleState extends EventTarget {
       player: [null, null, null, null, null, null],
       boss: null
     };
+    this.abilityOverrides = {
+      player: [null, null, null, null, null, null],
+      boss: null
+    };
     this.consumedItems = {
       player: [false, false, false, false, false, false],
       boss: false
@@ -419,6 +431,9 @@ export class BattleState extends EventTarget {
       this.playerSpeedOverrides[idx] = null;
       if (this.battleSpeed) {
         this.battleSpeed.player[idx] = null;
+      }
+      if (this.abilityOverrides) {
+        this.abilityOverrides.player[idx] = null;
       }
       slot.speedOverride = null;
       slot.stats = {
@@ -475,6 +490,10 @@ export class BattleState extends EventTarget {
       battleSpeedSnapshot: {
         player: [...this.battleSpeed.player],
         boss: this.battleSpeed.boss
+      },
+      abilityOverridesSnapshot: {
+        player: [...this.abilityOverrides.player],
+        boss: this.abilityOverrides.boss
       },
       damageRollMode: this.damageRollMode
     };
@@ -550,6 +569,12 @@ export class BattleState extends EventTarget {
       this.battleSpeed = {
         player: [...snapshot.battleSpeedSnapshot.player],
         boss: snapshot.battleSpeedSnapshot.boss
+      };
+    }
+    if (snapshot.abilityOverridesSnapshot) {
+      this.abilityOverrides = {
+        player: [...snapshot.abilityOverridesSnapshot.player],
+        boss: snapshot.abilityOverridesSnapshot.boss
       };
     }
     if (snapshot.damageRollMode !== undefined) {
@@ -808,14 +833,17 @@ export class BattleState extends EventTarget {
                   notesCountBefore = turnLog.notes.length;
                 }
               } else if (move.damage_class?.name !== "status" && usedPower) {
+                const attackerAbility = getEffectiveAbility({ slotIndex: this.activeSlot, isBoss: false }, this);
+                const defenderAbility = getEffectiveAbility({ isBoss: true }, this);
+                const attackerItem = getEffectiveItem({ slotIndex: this.activeSlot, isBoss: false, item: currentActive.item }, this);
                 const payload = {
-                  attacker: { ...currentActive, stats: currentActive.currentStats, level: currentActive.level, item: currentActive.item, ability: currentActive.ability },
+                  attacker: { ...currentActive, stats: currentActive.currentStats, level: currentActive.level, item: attackerItem, ability: attackerAbility },
                   boss: { stats: this.bossCurrentStats, maxHp: this.bossMaxHP },
                   move: move,
                   attackerTypes: this.teamCurrentTypes[this.activeSlot],
                   bossTypes: this.bossCurrentTypes,
-                  ability: currentActive.ability,
-                  defenderAbility: this.bossAbility,
+                  ability: attackerAbility,
+                  defenderAbility,
                   defenderHP: this.bossHP,
                   defenderMaxHP: this.bossMaxHP,
                   stages: this.teamStages[this.activeSlot],
@@ -846,9 +874,8 @@ export class BattleState extends EventTarget {
 
               const initialHP = this.bossHP;
               const maxHP = this.bossMaxHP;
-              const attackerAbility = currentActive.ability;
               const ignoresDefensiveAbilities = ["mold-breaker", "teravolt", "turboblaze"].includes(normalizeAbility(attackerAbility));
-              const activeDefenderAbility = ignoresDefensiveAbilities ? "" : normalizeAbility(this.bossAbility);
+              const activeDefenderAbility = ignoresDefensiveAbilities ? "" : normalizeAbility(defenderAbility);
               
               let bossSurvived = false;
               if (dealt >= initialHP && initialHP === maxHP) {
@@ -887,9 +914,17 @@ export class BattleState extends EventTarget {
                 otherModifiers: normal.otherModifiers,
                 itemFinalModifier: normal.itemFinalModifier,
                 attackStatModifier: normal.attackStatModifier,
-                attackerAbility: currentActive.ability,
+                attackerAbility,
                 attackerItem: currentActive.item
               };
+              turnLog.damageDetails = turnLog.playerDamageDetails;
+
+              const moveType = move?.type?.name || "";
+              if (attackerItem === `${moveType}-gem` && normal.effectiveness !== 0 && dealt > 0) {
+                markItemConsumed({ slotIndex: this.activeSlot }, this);
+                turnLog.notes.push(`${displayName(currentActive.pokemon.name)} consumed its ${titleCase(attackerItem)}!`);
+                captureNotes();
+              }
 
               if (bossSurvived) {
                 turnLog.notes.push(`${bossDisplayName}'s Sturdy activated!`);
@@ -927,14 +962,16 @@ export class BattleState extends EventTarget {
               notesCountBefore = turnLog.notes.length;
             }
           } else if (step.move.damage_class?.name !== "status" && usedPower) {
+            const attackerAbility = getEffectiveAbility({ isBoss: true }, this);
+            const defenderAbility = getEffectiveAbility({ slotIndex: this.activeSlot, isBoss: false }, this);
             const payload = {
-              attacker: { stats: this.bossCurrentStats, level: 200, item: "", ability: this.bossAbility },
+              attacker: { stats: this.bossCurrentStats, level: 200, item: "", ability: attackerAbility },
               boss: { stats: currentActive.currentStats, maxHp: currentActive.stats.hp },
               move: step.move,
               attackerTypes: this.bossCurrentTypes,
               bossTypes: this.teamCurrentTypes[this.activeSlot],
-              ability: this.bossAbility,
-              defenderAbility: currentActive.ability,
+              ability: attackerAbility,
+              defenderAbility,
               defenderHP: this.teamHP[this.activeSlot],
               defenderMaxHP: currentActive.stats.hp,
               stages: this.bossStages,
@@ -965,9 +1002,9 @@ export class BattleState extends EventTarget {
 
             const initialHP = this.teamHP[this.activeSlot];
             const maxHP = currentActive.stats.hp;
-            const itemSlug = (currentActive.item || "").toLowerCase().replaceAll(" ", "-");
-            const ignoresDefensiveAbilities = ["mold-breaker", "teravolt", "turboblaze"].includes(normalizeAbility(this.bossAbility));
-            const activeDefenderAbility = ignoresDefensiveAbilities ? "" : normalizeAbility(currentActive.ability);
+            const itemSlug = getEffectiveItem({ slotIndex: this.activeSlot, isBoss: false, item: currentActive.item }, this);
+            const ignoresDefensiveAbilities = ["mold-breaker", "teravolt", "turboblaze"].includes(normalizeAbility(attackerAbility));
+            const activeDefenderAbility = ignoresDefensiveAbilities ? "" : normalizeAbility(defenderAbility);
 
             let playerSurvived = false;
             let survivalNote = "";
@@ -1016,9 +1053,12 @@ export class BattleState extends EventTarget {
                otherModifiers: normal.otherModifiers,
                itemFinalModifier: normal.itemFinalModifier,
                attackStatModifier: normal.attackStatModifier,
-               attackerAbility: this.bossAbility,
+               attackerAbility,
                attackerItem: ""
              };
+             if (!turnLog.damageDetails) {
+               turnLog.damageDetails = turnLog.bossDamageDetails;
+             }
 
              if (playerSurvived) {
                survivalNote.split("\n").forEach(noteLine => {
@@ -1059,7 +1099,7 @@ export class BattleState extends EventTarget {
     if (this.teamHP[this.activeSlot] > 0) {
       const activeSlotIndex = this.activeSlot;
       const currentActive = this.team[activeSlotIndex];
-      const itemSlug = (currentActive.item || "").toLowerCase().replaceAll(" ", "-");
+      const itemSlug = getEffectiveItem({ slotIndex: activeSlotIndex, isBoss: false, item: currentActive.item }, this);
       const initialHP = this.teamHP[activeSlotIndex];
       const maxHP = currentActive.stats.hp;
 
@@ -1081,11 +1121,24 @@ export class BattleState extends EventTarget {
         turnLog.messages.push(shellMsg);
       }
 
+      // Oran Berry
+      if (itemSlug === "oran-berry" && this.teamHP[activeSlotIndex] > 0 && this.teamHP[activeSlotIndex] <= maxHP / 2) {
+        const heal = 10;
+        this.teamHP[activeSlotIndex] = Math.min(maxHP, this.teamHP[activeSlotIndex] + heal);
+        markItemConsumed({ slotIndex: activeSlotIndex }, this);
+
+        const oranEat = `<strong>${displayName(currentActive.pokemon.name)}</strong> ate its Oran Berry!`;
+        const oranMsg = `<strong>${displayName(currentActive.pokemon.name)}</strong> restored HP using its Oran Berry!`;
+        turnLog.notes.push(`${displayName(currentActive.pokemon.name)} consumed its Oran Berry and healed ${heal} HP.`);
+        turnLog.messages.push(oranEat);
+        turnLog.messages.push(oranMsg);
+      }
+
       // Sitrus Berry
-      if (itemSlug === "sitrus-berry" && this.teamHP[activeSlotIndex] <= maxHP / 2) {
+      if (itemSlug === "sitrus-berry" && this.teamHP[activeSlotIndex] > 0 && this.teamHP[activeSlotIndex] <= maxHP / 2) {
         const heal = Math.floor(maxHP / 4);
         this.teamHP[activeSlotIndex] = Math.min(maxHP, this.teamHP[activeSlotIndex] + heal);
-        currentActive.item = ""; // Consume Sitrus Berry
+        markItemConsumed({ slotIndex: activeSlotIndex }, this);
         
         const sitrusEat = `<strong>${displayName(currentActive.pokemon.name)}</strong> ate its Sitrus Berry!`;
         const sitrusMsg = `<strong>${displayName(currentActive.pokemon.name)}</strong> restored HP using its Sitrus Berry!`;
@@ -1241,16 +1294,97 @@ export function getStage(battlerRef, statKey, state) {
   return state.teamStages[idx]?.[statKey] || 0;
 }
 
+export function setStage(battlerRef, statKey, value, state) {
+  const isBoss = (battlerRef === "boss" || battlerRef === state.boss || (battlerRef && battlerRef.isBoss));
+  const clamped = Math.max(-6, Math.min(6, Number(value) || 0));
+  if (isBoss) {
+    state.bossStages[statKey] = clamped;
+    return clamped;
+  }
+  const idx = (battlerRef && typeof battlerRef.slotIndex === "number") ? battlerRef.slotIndex : state.activeSlot;
+  if (!state.teamStages[idx]) {
+    state.teamStages[idx] = emptyStages();
+  }
+  state.teamStages[idx][statKey] = clamped;
+  return clamped;
+}
+
+export function getAbilityOverride(battlerRef, state) {
+  if (!state.abilityOverrides) {
+    state.abilityOverrides = {
+      player: [null, null, null, null, null, null],
+      boss: null
+    };
+  }
+  const isBoss = (battlerRef === "boss" || battlerRef === state.boss || (battlerRef && battlerRef.isBoss));
+  if (isBoss) {
+    return state.abilityOverrides.boss;
+  }
+  const idx = (battlerRef && typeof battlerRef.slotIndex === "number") ? battlerRef.slotIndex : state.activeSlot;
+  return state.abilityOverrides.player[idx] || null;
+}
+
+export function setAbilityOverride(battlerRef, state, ability) {
+  if (!state.abilityOverrides) {
+    state.abilityOverrides = {
+      player: [null, null, null, null, null, null],
+      boss: null
+    };
+  }
+  const normalized = ability ? normalizeAbility(ability) : null;
+  const isBoss = (battlerRef === "boss" || battlerRef === state.boss || (battlerRef && battlerRef.isBoss));
+  if (isBoss) {
+    state.abilityOverrides.boss = normalized;
+  } else {
+    const idx = (battlerRef && typeof battlerRef.slotIndex === "number") ? battlerRef.slotIndex : state.activeSlot;
+    state.abilityOverrides.player[idx] = normalized;
+  }
+  return normalized;
+}
+
+export function getEffectiveAbility(battlerRef, state) {
+  const override = getAbilityOverride(battlerRef, state);
+  if (override) return override;
+
+  const isBoss = (battlerRef === "boss" || battlerRef === state.boss || (battlerRef && battlerRef.isBoss));
+  if (isBoss) {
+    return state.bossAbility || battlerRef?.ability || "";
+  }
+  const idx = (battlerRef && typeof battlerRef.slotIndex === "number") ? battlerRef.slotIndex : state.activeSlot;
+  return state.team[idx]?.ability || battlerRef?.ability || "";
+}
+
+export function changeStage(battlerRef, statKey, amount, state) {
+  const ability = normalizeAbility(getEffectiveAbility(battlerRef, state));
+  const finalAmount = ability === "simple" ? amount * 2 : amount;
+  const before = getStage(battlerRef, statKey, state);
+  const after = setStage(battlerRef, statKey, before + finalAmount, state);
+  return { before, after, appliedAmount: finalAmount, simpleBoosted: finalAmount !== amount };
+}
+
 export function stageToMultiplier(stage) {
   if (stage > 0) return (2 + stage) / 2;
   if (stage < 0) return 2 / (2 - stage);
   return 1;
 }
 
-export function hasItem(battlerRef, itemSlug) {
-  if (battlerRef === "boss" || (battlerRef && battlerRef.isBoss)) return false;
-  const item = (battlerRef?.item || "");
-  return item.toLowerCase().replaceAll(" ", "-") === itemSlug;
+export function getSetupItem(battlerRef, state) {
+  const isBoss = (battlerRef === "boss" || battlerRef === state.boss || (battlerRef && battlerRef.isBoss));
+  if (isBoss) {
+    return normalizeAbility(battlerRef?.item || "");
+  }
+  const idx = (battlerRef && typeof battlerRef.slotIndex === "number") ? battlerRef.slotIndex : state.activeSlot;
+  const item = battlerRef?.item ?? state.team[idx]?.item ?? "";
+  return normalizeAbility(item);
+}
+
+export function getEffectiveItem(battlerRef, state) {
+  return isItemConsumed(battlerRef, state) ? "" : getSetupItem(battlerRef, state);
+}
+
+export function hasItem(battlerRef, itemSlug, state = null) {
+  const item = state ? getEffectiveItem(battlerRef, state) : normalizeAbility(battlerRef?.item || "");
+  return item === itemSlug;
 }
 
 export function isItemConsumed(battlerRef, state) {
@@ -1267,8 +1401,6 @@ export function markItemConsumed(battlerRef, state) {
   } else {
     const idx = (battlerRef && typeof battlerRef.slotIndex === "number") ? battlerRef.slotIndex : state.activeSlot;
     state.consumedItems.player[idx] = true;
-    const activeMon = state.team[idx];
-    if (activeMon) activeMon.item = ""; // Clear item slot to keep sync
   }
 }
 
@@ -1286,7 +1418,7 @@ export function getBattlerHpStats(battlerRef, state) {
 export function checkCustapBerry(battler, state) {
   const hpStats = getBattlerHpStats(battler, state);
   return (
-    hasItem(battler, "custap-berry") &&
+    hasItem(battler, "custap-berry", state) &&
     !isItemConsumed(battler, state) &&
     hpStats.hp <= hpStats.maxHP * 0.25
   );
@@ -1328,15 +1460,13 @@ export function getEffectiveSpeed(battlerRef, state) {
 
   let itemMultiplier = 1;
 
-  if (hasItem(battlerRef, "choice-scarf")) {
+  if (hasItem(battlerRef, "choice-scarf", state)) {
     itemMultiplier *= 1.5;
   }
 
   let abilityMultiplier = 1;
   const isBoss = (battlerRef === "boss" || (battlerRef && battlerRef.isBoss));
-  const ability = isBoss
-    ? state.bossAbility
-    : state.team[(battlerRef && typeof battlerRef.slotIndex === "number") ? battlerRef.slotIndex : state.activeSlot]?.ability;
+  const ability = normalizeAbility(getEffectiveAbility(battlerRef, state));
 
   if (ability === "unburden") {
     const idx = isBoss ? null : ((battlerRef && typeof battlerRef.slotIndex === "number") ? battlerRef.slotIndex : state.activeSlot);

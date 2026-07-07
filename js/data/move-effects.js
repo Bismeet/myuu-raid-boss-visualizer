@@ -1,23 +1,53 @@
 import { displayName, titleCase, getBossDisplayName } from "../utils/format.js";
-import { getEffectiveSpeed, setBattleSpeedOverride } from "../core/battle-state.js";
+import { changeStage, getEffectiveAbility, getEffectiveSpeed, setAbilityOverride, setBattleSpeedOverride } from "../core/battle-state.js";
+
+const stageText = (stage) => stage > 0 ? `+${stage}` : `${stage}`;
+
+function battlerRefForSide(state, side, role) {
+  if ((side === "player" && role === "user") || (side === "boss" && role === "target")) {
+    return { slotIndex: state.activeSlot, isBoss: false };
+  }
+  return { isBoss: true };
+}
+
+function battlerNameForSide(state, user, side, role) {
+  if ((side === "player" && role === "user") || (side === "boss" && role === "target")) {
+    return displayName(user.pokemon.name);
+  }
+  return `The opposing ${getBossDisplayName(state)}`;
+}
+
+function applyStatRaisingMove(state, user, side, turnLog, statKey, stagesToRaise, statNameLabel, roseLabel) {
+  const userRef = battlerRefForSide(state, side, "user");
+  const actorName = battlerNameForSide(state, user, side, "user");
+  const result = changeStage(userRef, statKey, stagesToRaise, state);
+
+  if (result.after === result.before) {
+    turnLog.notes.push(`${actorName}'s ${statNameLabel} won't go any higher!`);
+    return;
+  }
+
+  turnLog.notes.push(`${actorName}'s ${statNameLabel} ${roseLabel}!`);
+  if (result.simpleBoosted) {
+    turnLog.notes.push(`Simple doubled the stat change!`);
+  }
+  turnLog.notes.push(`${actorName} ${statNameLabel} stage: ${stageText(result.before)} -> ${stageText(result.after)}.`);
+}
 
 export function applyStatLoweringMove(state, user, target, side, turnLog, moveName, statKey, stagesToDrop, statNameLabel) {
-  const targetStages = side === "player" ? state.bossStages : state.teamStages[state.activeSlot];
-  
-  const targetName = side === "player" 
-    ? getBossDisplayName(state)
-    : displayName(user.pokemon.name);
-    
-  const before = targetStages[statKey] || 0;
-  const after = Math.max(-6, before - stagesToDrop);
-  targetStages[statKey] = after;
+  const targetRef = battlerRefForSide(state, side, "target");
+  const targetName = battlerNameForSide(state, user, side, "target");
+  const result = changeStage(targetRef, statKey, -stagesToDrop, state);
 
-  if (after === before) {
+  if (result.after === result.before) {
     turnLog.notes.push(`${targetName}'s ${statNameLabel} won't go any lower!`);
   } else {
     const fallLabel = stagesToDrop >= 2 ? "harshly fell" : "fell";
     turnLog.notes.push(`${targetName}'s ${statNameLabel} ${fallLabel}!`);
-    turnLog.notes.push(`${targetName} ${statNameLabel} stage: ${before} → ${after}.`);
+    if (result.simpleBoosted) {
+      turnLog.notes.push(`Simple doubled the stat change!`);
+    }
+    turnLog.notes.push(`${targetName} ${statNameLabel} stage: ${stageText(result.before)} -> ${stageText(result.after)}.`);
   }
 }
 
@@ -44,10 +74,7 @@ export const MOVE_EFFECTS = {
     implemented: "Implemented",
     description: "Boosts user's Attack by 2 stages.",
     apply(state, user, target, side, turnLog) {
-      const stages = side === "player" ? state.teamStages[state.activeSlot] : state.bossStages;
-      stages.atk = Math.min(6, stages.atk + 2);
-      const actorName = side === "player" ? displayName(user.pokemon.name) : getBossDisplayName(state);
-      turnLog.notes.push(`${actorName}'s Attack sharply rose!`);
+      applyStatRaisingMove(state, user, side, turnLog, "atk", 2, "Attack", "sharply rose");
     }
   },
   "nasty-plot": {
@@ -55,10 +82,26 @@ export const MOVE_EFFECTS = {
     implemented: "Implemented",
     description: "Boosts user's Sp. Atk by 2 stages.",
     apply(state, user, target, side, turnLog) {
-      const stages = side === "player" ? state.teamStages[state.activeSlot] : state.bossStages;
-      stages.spa = Math.min(6, stages.spa + 2);
-      const actorName = side === "player" ? displayName(user.pokemon.name) : getBossDisplayName(state);
-      turnLog.notes.push(`${actorName}'s Sp. Atk sharply rose!`);
+      applyStatRaisingMove(state, user, side, turnLog, "spa", 2, "Sp. Atk", "sharply rose");
+    }
+  },
+  "simple-beam": {
+    name: "Simple Beam",
+    implemented: "Implemented",
+    description: "Changes the target's ability to Simple.",
+    apply(state, user, target, side, turnLog) {
+      const targetRef = battlerRefForSide(state, side, "target");
+      const targetName = battlerNameForSide(state, user, side, "target");
+      const before = getEffectiveAbility(targetRef, state);
+      setAbilityOverride(targetRef, state, "simple");
+
+      turnLog.notes.push(`${targetName}'s Ability became Simple!`);
+      turnLog.notes.push(`${targetName}'s Ability: ${titleCase(before || "None")} -> Simple.`);
+
+      return {
+        dealtDamage: 0,
+        effectApplied: true
+      };
     }
   },
   "belly-drum": {

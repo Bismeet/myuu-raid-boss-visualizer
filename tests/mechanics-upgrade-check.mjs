@@ -134,10 +134,49 @@ const sitrusLog = state.battleLog.at(-1).notes.find(n => n.includes("Sitrus Berr
 if (!sitrusLog) {
   throw new Error("Sitrus Berry not consumed or resolved.");
 }
-if (state.team[0].item !== "") {
-  throw new Error("Sitrus Berry was not consumed.");
+if (state.team[0].item !== "sitrus-berry") {
+  throw new Error("Sitrus Berry should remain selected in Team Builder after battle consumption.");
+}
+if (!state.consumedItems.player[0]) {
+  throw new Error("Sitrus Berry was not marked consumed in battle state.");
 }
 console.log(`Verified Sitrus Berry consumption: ${sitrusLog}`);
+
+// Setup Oran Berry
+state.resetBattle();
+state.startBattle();
+state.team[0].item = "oran-berry";
+state.teamHP[0] = Math.floor(state.team[0].stats.hp / 3); // Under 50% HP
+state.executeTurn("use-move", 0, 0, "do-nothing", 0);
+
+const oranLog = state.battleLog.at(-1).notes.find(n => n.includes("Oran Berry"));
+if (!oranLog) {
+  throw new Error("Oran Berry not consumed or resolved.");
+}
+if (state.team[0].item !== "oran-berry") {
+  throw new Error("Oran Berry should remain selected in Team Builder after battle consumption.");
+}
+if (!state.consumedItems.player[0]) {
+  throw new Error("Oran Berry was not marked consumed in battle state.");
+}
+console.log(`Verified Oran Berry consumption: ${oranLog}`);
+
+// Setup Type Gem
+state.resetBattle();
+state.startBattle();
+state.team[0].item = "normal-gem";
+state.executeTurn("use-move", 0, 0, "do-nothing", 0);
+const gemLog = state.battleLog.at(-1).notes.find(n => n.includes("Normal Gem"));
+if (!gemLog) {
+  throw new Error("Normal Gem consumption was not logged.");
+}
+if (state.team[0].item !== "normal-gem") {
+  throw new Error("Normal Gem should remain selected in Team Builder after battle consumption.");
+}
+if (!state.consumedItems.player[0]) {
+  throw new Error("Normal Gem was not marked consumed in battle state.");
+}
+console.log(`Verified Normal Gem battle-only consumption: ${gemLog}`);
 
 // Setup Focus Sash
 state.resetBattle();
@@ -153,8 +192,11 @@ if (!sashLog) {
 if (state.teamHP[0] !== 1) {
   throw new Error(`Focus Sash did not preserve HP to 1, got ${state.teamHP[0]}`);
 }
-if (state.team[0].item !== "") {
-  throw new Error("Focus Sash was not consumed.");
+if (state.team[0].item !== "focus-sash") {
+  throw new Error("Focus Sash should remain selected in Team Builder after battle consumption.");
+}
+if (!state.consumedItems.player[0]) {
+  throw new Error("Focus Sash was not marked consumed in battle state.");
 }
 console.log(`Verified Focus Sash preservation: ${sashLog}`);
 

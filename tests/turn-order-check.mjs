@@ -98,6 +98,9 @@ if (!log3.notes.some(n => n.includes("Custap Berry activated!"))) {
 if (!state.consumedItems.player[0]) {
   throw new Error("Custap Berry was not marked as consumed.");
 }
+if (state.team[0].item !== "Custap Berry") {
+  throw new Error("Custap Berry should remain selected in Team Builder after battle consumption.");
+}
 
 // Turn 2: Custap is consumed. Mewtwo should move first again.
 state.executeTurn("use-move", 2, 0, "use-move", 0);
