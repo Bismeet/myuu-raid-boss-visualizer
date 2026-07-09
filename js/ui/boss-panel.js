@@ -212,7 +212,7 @@ export class BossPanel {
           ` : ""}
         </div>
 
-        <p class="microcopy" style="margin:4px 0 0 0;">Defenses use the 2.617 raid scalar. Split-modified values update here after simulation.</p>
+        <p class="microcopy" style="margin:4px 0 0 0; line-height: 1.3;">Boss Def/SpD testing rule:<br>HP ≥ 1M → Def/SpD 6300<br>HP < 1M → Def/SpD 3150</p>
       </section>`;
     
     this.bind();

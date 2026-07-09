@@ -107,11 +107,9 @@ const bossMew = {
 };
 const bossStats = calculateBossStats(bossMew);
 // Level 200, IV 31, EV 0
-// base Def = 100 * 2.617 = 261.7
-// Def calculation = Math.floor( (Math.floor( ((2 * 261.7 + 31 + 0) * 200) / 100 ) + 5) * 1.0 )
-// = Math.floor( (Math.floor( 1108.8 ) + 5) * 1.0 ) = 1113
-if (bossStats.def !== 1113) {
-  throw new Error(`Boss scaled Defense should be 1113, got ${bossStats.def}`);
+// Mew HP = 1,000,000, triggering Def/SpD = 6300 under the new rules
+if (bossStats.def !== 6300) {
+  throw new Error(`Boss scaled Defense should be 6300, got ${bossStats.def}`);
 }
 // base Atk = 100
 // Atk calculation = Math.floor( (Math.floor( ((2 * 100 + 31 + 0) * 200) / 100 ) + 5) * 1.0 )

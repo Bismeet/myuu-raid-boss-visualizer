@@ -355,9 +355,19 @@ export class BattleScene {
     return this.busy || this.state.isResolvingTurn;
   }
 
+  releaseTurnLockIfIdle() {
+    if (!this.busy && this.state.isResolvingTurn) {
+      this.state.isResolvingTurn = false;
+      this.render();
+    }
+  }
+
   render() {
     const boss = this.state.boss;
     const isBattle = this.state.battleActive;
+    if (isBattle && this.state.battleLog.length === 0) {
+      this.lastAnimatedTurn = 0;
+    }
     const controlsLocked = this.controlsLocked();
     
     let formulaModalHTML = "";
@@ -810,9 +820,14 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
         const slot = Number(btn.dataset.slot);
         
         if (state.awaitingForcedSwitch) {
+          state.isResolvingTurn = true;
+          btn.disabled = true;
           try {
             state.executeForcedSwitch(slot);
+            this.releaseTurnLockIfIdle();
           } catch (e) {
+            state.isResolvingTurn = false;
+            btn.disabled = false;
             alert(e.message);
           }
         } else if (this.batonPassSelecting) {
@@ -847,12 +862,14 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
 
     // Cancel buttons
     this.root.querySelector("#cancel-switch-btn")?.addEventListener("click", () => {
+      if (this.controlsLocked()) return;
       this.playerAction = "use-move";
       this.selectedMoveIndex = 0;
       this.render();
     });
 
     this.root.querySelector("#cancel-baton-pass-btn")?.addEventListener("click", () => {
+      if (this.controlsLocked()) return;
       this.batonPassSelecting = false;
       this.playerAction = "use-move";
       this.selectedMoveIndex = 0;
@@ -863,6 +880,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     this.root.querySelectorAll(".move-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         if (this.controlsLocked()) return;
+        btn.disabled = true;
         const idx = Number(btn.dataset.moveIdx);
         const isBatonPass = btn.dataset.batonPass === "true";
         
@@ -883,6 +901,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     const zMoveBtn = this.root.querySelector("#z-move-btn");
     zMoveBtn?.addEventListener("click", () => {
       if (this.controlsLocked()) return;
+      zMoveBtn.disabled = true;
       const activeBuild = state.team[state.activeSlot];
       if (activeBuild && activeBuild.moves) {
         const idx = activeBuild.moves.findIndex((m) => m && m.name === "belly-drum");
@@ -946,6 +965,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
       if (this.controlsLocked()) return;
       try {
         state.startNewBattleFromCurrentSetup();
+        this.lastAnimatedTurn = 0;
         state.battleActive = true;
         state.uiMode = "battle";
         if (window.myuuRaid?.navigate) window.myuuRaid.navigate("battle");
@@ -966,6 +986,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
 
     this.root.querySelector("#back-to-builder-btn")?.addEventListener("click", (e) => {
       e.preventDefault();
+      if (this.controlsLocked()) return;
       state.uiMode = "builder";
       state.battleActive = false;
       if (window.myuuRaid?.navigate) window.myuuRaid.navigate("team-builder");
@@ -993,6 +1014,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
         shouldTera
       );
       this.shouldTerastallize = false;
+      this.releaseTurnLockIfIdle();
     } catch (err) {
       this.state.isResolvingTurn = false;
       alert(err.message);

@@ -1736,3 +1736,356 @@ input[type="range"]:disabled::-moz-range-thumb {
     grid-template-columns: 1fr;
   }
 }
+
+/* ================================================================
+   QUICK CALC
+   Independent raid damage calculator workspace.
+   ================================================================ */
+.quick-calc {
+  display: grid;
+  gap: 16px;
+}
+.quick-calc-heading {
+  align-items: flex-start;
+  padding: 22px;
+  border: 1px solid rgba(92,132,101,.42);
+  border-radius: var(--radius);
+  background: rgba(255,253,242,.94);
+  box-shadow: var(--shadow);
+}
+.quick-calc-heading p {
+  max-width: 760px;
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+.quick-calc-actions,
+.quick-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.quick-calc-actions select {
+  width: 220px;
+}
+.quick-calc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.quick-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid rgba(92,132,101,.42);
+  border-radius: 16px;
+  background: rgba(255,253,242,.95);
+  box-shadow: var(--shadow);
+}
+.quick-wide {
+  width: 100%;
+}
+.quick-card-title {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.quick-card-title.compact {
+  min-height: 0;
+}
+.quick-card-title img {
+  width: 74px;
+  height: 66px;
+  object-fit: contain;
+  filter: drop-shadow(0 5px 4px rgba(37,74,52,.16));
+}
+.quick-card h3 {
+  margin: 0 0 10px;
+  color: #31544f;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.quick-search {
+  position: relative;
+  min-width: 0;
+  margin-bottom: 10px;
+}
+.quick-search .inline-results,
+.quick-card > .inline-results {
+  position: relative;
+  z-index: 8;
+}
+.quick-fields {
+  display: grid;
+  gap: 9px;
+  margin-top: 10px;
+}
+.quick-fields.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.quick-fields.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.quick-fields.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.quick-fields.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.quick-card label span,
+.quick-search label span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--faint);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.quick-card input,
+.quick-card select {
+  min-width: 0;
+}
+.quick-check {
+  display: flex !important;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 9px;
+  border: 1px solid #c7d8be;
+  border-radius: 9px;
+  background: #f4f9ed;
+}
+.quick-check input {
+  width: 17px;
+  min-height: 17px;
+  flex: 0 0 auto;
+  accent-color: #16847d;
+}
+.quick-check span {
+  margin: 0 !important;
+  color: #31544f !important;
+  font-size: 10px !important;
+  line-height: 1.2;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+.quick-stat-strip,
+.quick-base-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 12px;
+}
+.quick-base-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.quick-stat-strip > div,
+.quick-base-grid > div {
+  min-width: 0;
+  padding: 10px 8px;
+  border: 1px solid #c7d8be;
+  border-radius: 10px;
+  background: #f4f9ed;
+}
+.quick-stat-strip span,
+.quick-base-grid span {
+  display: block;
+  color: var(--faint);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.quick-stat-strip strong,
+.quick-base-grid strong {
+  display: block;
+  margin-top: 3px;
+  color: #31544f;
+  font-size: 16px;
+  line-height: 1.15;
+  word-break: break-word;
+}
+.quick-formula {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.quick-setup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.2fr) minmax(260px, .65fr);
+  gap: 12px;
+}
+.quick-subpanel {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #d1dec8;
+  border-radius: 12px;
+  background: #fbfcf4;
+}
+.quick-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+.quick-log,
+.quick-reverse-output,
+.quick-multihit {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 11px;
+  border: 1px solid #c7d8be;
+  border-radius: 10px;
+  background: #f4f9ed;
+  color: #48665e;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.quick-log strong,
+.quick-reverse-output strong,
+.quick-multihit strong {
+  color: #174e4c;
+}
+.quick-move-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr);
+  gap: 12px;
+  align-items: start;
+}
+.quick-move-grid > .quick-fields,
+.quick-move-grid > .quick-fields.two {
+  grid-column: 1 / -1;
+}
+.quick-result-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+  gap: 16px;
+}
+.quick-main-result {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #d1dec8;
+  border-radius: 12px;
+  background: #fbfcf4;
+}
+.quick-summary-line {
+  max-width: 780px;
+  margin: 0 0 14px;
+  color: #31544f;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.45;
+}
+.quick-roll-range-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: #48665e;
+}
+.quick-roll-range-line span {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.quick-roll-range-line strong {
+  color: #31544f;
+  font-size: 13px;
+}
+.quick-simple-results {
+  display: grid;
+  gap: 10px;
+}
+.quick-simple-results > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #c7d8be;
+  border-radius: 10px;
+  background: #f4f9ed;
+}
+.quick-simple-results span {
+  color: #48665e;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.quick-simple-results strong {
+  color: #174e4c;
+  font-size: clamp(22px, 3vw, 32px);
+  line-height: 1;
+}
+.quick-reverse {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #d1dec8;
+  border-radius: 12px;
+  background: #fbfcf4;
+}
+.quick-reverse .button {
+  width: 100%;
+  margin-top: 10px;
+}
+.quick-calc-status {
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.myuu-range strong {
+  color: #6c3d12;
+}
+
+@media(max-width:1180px) {
+  .quick-calc-grid,
+  .quick-setup-grid,
+  .quick-result-layout {
+    grid-template-columns: 1fr;
+  }
+  .quick-move-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media(max-width:760px) {
+  .quick-calc-heading {
+    display: grid;
+    padding: 16px;
+  }
+  .quick-calc-actions {
+    justify-content: stretch;
+  }
+  .quick-calc-actions select,
+  .quick-calc-actions .button,
+  .quick-result-actions .button {
+    width: 100%;
+  }
+  .quick-card {
+    padding: 14px;
+    border-radius: 13px;
+  }
+  .quick-fields.two,
+  .quick-fields.three,
+  .quick-fields.four,
+  .quick-fields.five,
+  .quick-stat-strip,
+  .quick-base-grid,
+  .quick-toggle-grid {
+    grid-template-columns: 1fr;
+  }
+  .quick-simple-results > div {
+    display: grid;
+    justify-content: stretch;
+  }
+  .quick-card-title {
+    align-items: flex-start;
+  }
+  .quick-card-title img {
+    width: 58px;
+    height: 52px;
+  }
+}

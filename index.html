@@ -6,7 +6,7 @@
   <meta name="description" content="Plan and visualize 1v6 Myuu-style Pokémon raid damage across 21 turns.">
   <title>Myuu Raid — Pokémon Adventure Planner</title>
   <link rel="preconnect" href="https://raw.githubusercontent.com">
-  <link rel="stylesheet" href="styles.css?v=6">
+  <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
   <header class="app-header">
@@ -19,6 +19,7 @@
       <a href="#team-builder" data-app-view="team-builder"><span>02</span>Team Builder</a>
       <a href="#boss-builder" data-app-view="boss-builder"><span>03</span>Boss Builder</a>
       <a href="#battle" data-app-view="battle"><span>04</span>Battle</a>
+      <a href="#quick-calc" data-app-view="quick-calc"><span>05</span>Quick Calc</a>
     </nav>
     <div class="header-status"><span class="signal"></span><span>Pokédex online</span><strong>21 turns</strong></div>
   </header>
@@ -49,9 +50,13 @@
       <div id="battle-scene"></div>
       <div id="summary"></div>
     </section>
+
+    <section id="quick-calc-view" class="app-view quick-calc-view" aria-label="Quick Calc" hidden>
+      <div id="quick-calc"></div>
+    </section>
   </main>
 
   <noscript>This app requires JavaScript to calculate and visualize raid damage.</noscript>
-  <script type="module" src="js/app.js?v=4"></script>
+  <script type="module" src="js/app.js?v=10"></script>
 </body>
 </html>
