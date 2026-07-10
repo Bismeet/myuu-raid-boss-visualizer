@@ -30,6 +30,27 @@ export const QUICK_CALC_GUARD_SPLIT_USERS = {
   shieldon: { name: "Shieldon", def: 7, spd: 7 },
   carbink: { name: "Carbink", def: 7, spd: 7 },
 };
+
+export function resolveQuickCalcBossTypes({
+  bossTypes = [],
+  manualTypesEnabled = false,
+  manualType1 = "",
+  manualType2 = "",
+  magicPowder = false,
+  soak = false,
+  trickOrTreat = false,
+  forestsCurse = false,
+} = {}) {
+  let types = manualTypesEnabled
+    ? [manualType1, manualType2].filter(Boolean)
+    : [...bossTypes];
+
+  if (magicPowder) types = ["psychic"];
+  if (soak) types = ["water"];
+  if (trickOrTreat && !types.includes("ghost")) types = [...types, "ghost"];
+  if (forestsCurse && !types.includes("grass")) types = [...types, "grass"];
+  return types;
+}
 const CUSTOM_GUARD_SPLITTER = "custom";
 const GUARD_SPLITTER_KEYS = [...Object.keys(QUICK_CALC_GUARD_SPLIT_USERS), CUSTOM_GUARD_SPLITTER];
 const PRESETS = {
@@ -94,6 +115,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 
 const slug = (value = "") => value.toLowerCase().trim().replaceAll(" ", "-");
 const fmt = (value) => Math.round(Number(value) || 0).toLocaleString();
 const percent = (value) => `${(Number(value) || 0).toFixed(2)}%`;
+const effectivenessLabel = (value) => `${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}x`;
 const prepareMove = (move) => move ? { ...move, basePower: move.power ?? null, customPower: move.power ?? null } : null;
 const blankSpread = (value) => ({ hp: value, atk: value, def: value, spa: value, spd: value, spe: value });
 const STANDARD_ROLL_MIN = 85;
@@ -353,15 +375,16 @@ export class QuickCalc {
   }
 
   bossTypes() {
-    if (this.cfg.manualTypesEnabled) {
-      return [this.cfg.manualType1, this.cfg.manualType2].filter(Boolean);
-    }
-    let types = this.cfg.boss?.types?.map(({ type }) => type.name) || [];
-    if (this.cfg.magicPowder) types = ["psychic"];
-    if (this.cfg.soak) types = ["water"];
-    if (this.cfg.trickOrTreat && !types.includes("ghost")) types = [...types, "ghost"];
-    if (this.cfg.forestsCurse && !types.includes("grass")) types = [...types, "grass"];
-    return types;
+    return resolveQuickCalcBossTypes({
+      bossTypes: this.cfg.boss?.types?.map(({ type }) => type.name) || [],
+      manualTypesEnabled: this.cfg.manualTypesEnabled,
+      manualType1: this.cfg.manualType1,
+      manualType2: this.cfg.manualType2,
+      magicPowder: this.cfg.magicPowder,
+      soak: this.cfg.soak,
+      trickOrTreat: this.cfg.trickOrTreat,
+      forestsCurse: this.cfg.forestsCurse,
+    });
   }
 
   attackerBuild() {
@@ -608,10 +631,13 @@ export class QuickCalc {
   resultText() {
     const calc = this.calculation();
     const displayed = getMyuuDisplayedDamageRange(calc.result.min, calc.result.max);
+    const bossTypes = this.bossTypes();
     return [
       this.resultSummary(calc),
       "",
       `Roll Range: ${calc.result.rollRange?.label || this.rollRangeModel().label}`,
+      `Effectiveness: ${effectivenessLabel(calc.result.effectiveness)}`,
+      `Current Boss Type: ${bossTypes.map(titleCase).join(" / ") || "Unknown"}`,
       "",
       `Raw Damage: ${fmt(calc.result.min)} - ${fmt(calc.result.max)}`,
       `Myuu Displayed Damage: ${fmt(displayed.min)} - ${fmt(displayed.max)}`,
@@ -824,6 +850,7 @@ export class QuickCalc {
   resultsPanel(calc) {
     const displayed = getMyuuDisplayedDamageRange(calc.result.min, calc.result.max);
     const summary = this.resultSummary(calc);
+    const bossTypes = this.bossTypes();
     return `
       <section class="quick-card quick-wide" data-quick-results aria-labelledby="quick-result-title">
         <div class="quick-card-title compact">
@@ -836,6 +863,10 @@ export class QuickCalc {
           <div class="quick-main-result">
             <p class="quick-summary-line">${escapeHtml(summary)}</p>
             <p class="quick-roll-range-line"><span>Roll Range</span><strong>${escapeHtml(calc.result.rollRange?.label || this.rollRangeModel().label)}</strong></p>
+            <div class="quick-type-effectiveness" aria-label="Current type effectiveness">
+              <div><span>Effectiveness</span><strong>${effectivenessLabel(calc.result.effectiveness)}</strong></div>
+              <div><span>Current Boss Type</span><div class="type-row">${bossTypes.map((type) => `<span class="type-badge type-${type}">${escapeHtml(type)}</span>`).join("") || "<em>Unknown</em>"}</div></div>
+            </div>
             <div class="quick-simple-results">
               <div><span>Raw Damage</span><strong>${fmt(calc.result.min)} - ${fmt(calc.result.max)}</strong></div>
               <div class="myuu-range"><span>Myuu Displayed Damage</span><strong>${fmt(displayed.min)} - ${fmt(displayed.max)}</strong></div>

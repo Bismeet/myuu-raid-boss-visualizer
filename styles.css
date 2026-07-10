@@ -2255,6 +2255,32 @@ input[type="range"]:disabled::-moz-range-thumb {
   color: #31544f;
   font-size: 13px;
 }
+.quick-type-effectiveness {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #c7d8be;
+  border-radius: 10px;
+  background: #f4f9ed;
+}
+.quick-type-effectiveness > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+.quick-type-effectiveness > div > span {
+  color: #48665e;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.quick-type-effectiveness strong { color: #174e4c; font-size: 16px; }
+.quick-type-effectiveness em { color: var(--muted); font-size: 12px; }
 .quick-simple-results {
   display: grid;
   gap: 10px;
