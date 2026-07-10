@@ -22,12 +22,15 @@ const RAID_MOVES = [
   "last-respects", "pin-missile", "icicle-spear", "screech", "metal-sound", "fake-tears",
   "guard-split", "stored-power", "power-trip", "rage-fist", "collision-course", "astral-barrage",
 ];
-const GUARD_USERS = {
-  abra: { label: "Abra", def: 141, spd: 251 },
-  shuckle: { label: "Shuckle", def: 614, spd: 614 },
-  elgyem: { label: "Elgyem", def: 251, spd: 339 },
-  shieldon: { label: "Shieldon", def: 368, spd: 321 },
+export const QUICK_CALC_GUARD_SPLIT_USERS = {
+  abra: { name: "Abra", def: 5, spd: 5 },
+  elgyem: { name: "Elgyem", def: 6, spd: 6 },
+  shuckle: { name: "Shuckle", def: 20, spd: 20 },
+  shieldon: { name: "Shieldon", def: 7, spd: 7 },
+  carbink: { name: "Carbink", def: 7, spd: 7 },
 };
+const CUSTOM_GUARD_SPLITTER = "custom";
+const GUARD_SPLITTER_KEYS = [...Object.keys(QUICK_CALC_GUARD_SPLIT_USERS), CUSTOM_GUARD_SPLITTER];
 const PRESETS = {
   basculegion: {
     label: "Basculegion Last Respects",
@@ -76,9 +79,9 @@ const PRESETS = {
     spaEv: 252,
     spaStage: 6,
   },
-  shuckle: { label: "Shuckle Guard Split", guardUsers: ["shuckle"] },
-  elgyem: { label: "Elgyem Guard Split", guardUsers: ["elgyem"] },
-  shieldon: { label: "Shieldon Screech", guardUsers: ["shieldon"], screechCount: 3 },
+  shuckle: { label: "Shuckle Guard Split", guardSplitOrder: ["shuckle"] },
+  elgyem: { label: "Elgyem Guard Split", guardSplitOrder: ["elgyem"] },
+  shieldon: { label: "Shieldon Screech", guardSplitOrder: ["shieldon"], screechCount: 3 },
 };
 
 const escapeHtml = (value = "") => String(value)
@@ -98,8 +101,15 @@ const MYUU_TEST_ROLL_MIN = 70;
 const MYUU_TEST_ROLL_MAX = 80;
 
 export function getMyuuDisplayedDamage(rawDamage) {
-  const damage = Math.max(0, Math.round(Number(rawDamage) || 0));
-  return damage <= MYUU_DAMAGE_CAP ? damage : damage % MYUU_DAMAGE_CAP;
+  const damage = Math.floor(Number(rawDamage) || 0);
+  return damage % MYUU_DAMAGE_CAP;
+}
+
+export function getMyuuDisplayedDamageRange(rawMin, rawMax) {
+  return {
+    min: getMyuuDisplayedDamage(rawMin),
+    max: getMyuuDisplayedDamage(rawMax),
+  };
 }
 
 function debounce(fn, delay) {
@@ -128,6 +138,22 @@ function bossHpFromBase(baseHp) {
 
 function average(values) {
   return values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0;
+}
+
+export function normalizeGuardSplitOrder(order) {
+  if (!Array.isArray(order)) return [];
+  return [...new Set(order.filter((key) => GUARD_SPLITTER_KEYS.includes(key)))];
+}
+
+export function calculateQuickCalcGuardSplits(startingDef, startingSpd, splitters = []) {
+  let currentDef = Math.max(1, Number(startingDef) || 1);
+  let currentSpd = Math.max(1, Number(startingSpd) || 1);
+  const steps = splitters.map((splitter, index) => {
+    currentDef = Math.floor((currentDef + splitter.def) / 2);
+    currentSpd = Math.floor((currentSpd + splitter.spd) / 2);
+    return { index: index + 1, splitter, def: currentDef, spd: currentSpd };
+  });
+  return { finalDef: currentDef, finalSpd: currentSpd, steps };
 }
 
 function damageClass(move) {
@@ -187,8 +213,7 @@ export class QuickCalc {
       manualBossDef: 3150,
       manualBossSpd: 3150,
       useManualDefense: false,
-      guardUsers: [],
-      customGuardEnabled: false,
+      guardSplitOrder: [],
       customGuardDef: 300,
       customGuardSpd: 300,
       screechCount: 0,
@@ -290,27 +315,26 @@ export class QuickCalc {
     const normalSpd = normalBossDefense(bases.spd);
     const startingDef = this.cfg.useManualDefense ? Math.max(1, Number(this.cfg.manualBossDef) || 1) : Math.floor(normalDef * (Number(this.cfg.bossDefMultiplier) || 1));
     const startingSpd = this.cfg.useManualDefense ? Math.max(1, Number(this.cfg.manualBossSpd) || 1) : Math.floor(normalSpd * (Number(this.cfg.bossSpdMultiplier) || 1));
-    let currentDef = startingDef;
-    let currentSpd = startingSpd;
-    const log = [`Starting Boss Def/SpD: ${fmt(currentDef)} / ${fmt(currentSpd)}`];
-    this.guardChain().forEach((user) => {
-      currentDef = Math.floor((currentDef + user.def) / 2);
-      currentSpd = Math.floor((currentSpd + user.spd) / 2);
-      log.push(`After ${user.label} Guard Split: ${fmt(currentDef)} / ${fmt(currentSpd)}`);
-    });
-    return { normalDef, normalSpd, startingDef, startingSpd, finalDef: currentDef, finalSpd: currentSpd, log };
+    const split = calculateQuickCalcGuardSplits(startingDef, startingSpd, this.guardChain());
+    const log = [
+      `Starting Boss Def/SpD: ${fmt(startingDef)} / ${fmt(startingSpd)}`,
+      ...split.steps.map(({ index, splitter, def, spd }) => `${index}. ${splitter.name} split using ${fmt(splitter.def)} / ${fmt(splitter.spd)} \u2192 ${fmt(def)} / ${fmt(spd)}`),
+    ];
+    return { normalDef, normalSpd, startingDef, startingSpd, finalDef: split.finalDef, finalSpd: split.finalSpd, log };
   }
 
   guardChain() {
-    const users = this.cfg.guardUsers.map((key) => GUARD_USERS[key]).filter(Boolean);
-    if (this.cfg.customGuardEnabled) {
-      users.push({
-        label: "Custom",
-        def: Math.max(1, Number(this.cfg.customGuardDef) || 1),
-        spd: Math.max(1, Number(this.cfg.customGuardSpd) || 1),
-      });
-    }
-    return users;
+    return normalizeGuardSplitOrder(this.cfg.guardSplitOrder).map((key) => {
+      if (key === CUSTOM_GUARD_SPLITTER) {
+        return {
+          key,
+          name: "Custom",
+          def: Math.max(1, Number(this.cfg.customGuardDef) || 1),
+          spd: Math.max(1, Number(this.cfg.customGuardSpd) || 1),
+        };
+      }
+      return { key, ...QUICK_CALC_GUARD_SPLIT_USERS[key] };
+    }).filter(Boolean);
   }
 
   stageModel() {
@@ -540,7 +564,7 @@ export class QuickCalc {
     }
 
     if (!best) return null;
-    const original = this.invertGuardChain(best.defense);
+    const original = this.invertGuardChain(best.defense, defenseKey);
     return {
       ...best,
       originalDefense: original,
@@ -562,10 +586,10 @@ export class QuickCalc {
     return rolls.map((damage, index) => mapCandidate(damage, `roll ${index + 1}`));
   }
 
-  invertGuardChain(finalDefense) {
+  invertGuardChain(finalDefense, defenseKey = "def") {
     let value = Number(finalDefense) || 1;
     [...this.guardChain()].reverse().forEach((user) => {
-      value = Math.max(1, (value * 2) - user.def);
+      value = Math.max(1, (value * 2) - user[defenseKey]);
     });
     return Math.round(value);
   }
@@ -584,16 +608,14 @@ export class QuickCalc {
 
   resultText() {
     const calc = this.calculation();
-    const displayedRolls = (calc.result.rolls || []).map(getMyuuDisplayedDamage);
-    const displayedMin = displayedRolls.length ? Math.min(...displayedRolls) : 0;
-    const displayedMax = displayedRolls.length ? Math.max(...displayedRolls) : 0;
+    const displayed = getMyuuDisplayedDamageRange(calc.result.min, calc.result.max);
     return [
       this.resultSummary(calc),
       "",
       `Roll Range: ${calc.result.rollRange?.label || this.rollRangeModel().label}`,
       "",
       `Raw Damage: ${fmt(calc.result.min)} - ${fmt(calc.result.max)}`,
-      `Myuu Displayed Damage: ${fmt(displayedMin)} - ${fmt(displayedMax)}`,
+      `Myuu Displayed Damage: ${fmt(displayed.min)} - ${fmt(displayed.max)}`,
       "",
       `Myuu damage wraps after ${fmt(MYUU_DAMAGE_CAP)}.`,
       "Based on the selected damage roll range.",
@@ -715,17 +737,35 @@ export class QuickCalc {
   }
 
   setupPanel(calc) {
+    const guardChain = this.guardChain();
+    const availableGuardSplitters = GUARD_SPLITTER_KEYS.filter((key) => !this.cfg.guardSplitOrder.includes(key));
     return `
       <section class="quick-card quick-wide" aria-labelledby="quick-setup-title">
         <div class="quick-card-title compact"><div><span class="eyebrow">Raid modifiers</span><h2 id="quick-setup-title">Myuu Raid Setup</h2></div></div>
         <div class="quick-setup-grid">
           <div class="quick-subpanel">
-            <h3>Guard Split Chain</h3>
-            <div class="quick-toggle-grid">
-              ${Object.entries(GUARD_USERS).map(([key, user]) => `<label class="quick-check"><input type="checkbox" data-guard-user="${key}" ${this.cfg.guardUsers.includes(key) ? "checked" : ""}><span>${user.label}</span></label>`).join("")}
-              <label class="quick-check"><input type="checkbox" data-cfg-check="customGuardEnabled" ${this.cfg.customGuardEnabled ? "checked" : ""}><span>Custom Guard Split user</span></label>
+            <h3>Guard Split Order</h3>
+            <p class="quick-formula quick-guard-help">Add each splitter, then use the controls to set the exact sequential order.</p>
+            <div class="quick-guard-add">
+              <label><span>Add splitter</span><select data-guard-add-select ${availableGuardSplitters.length ? "" : "disabled"}>
+                ${availableGuardSplitters.length
+                  ? availableGuardSplitters.map((key) => `<option value="${key}">${key === CUSTOM_GUARD_SPLITTER ? "Custom Guard Split user" : QUICK_CALC_GUARD_SPLIT_USERS[key].name}</option>`).join("")
+                  : `<option>All splitters added</option>`}
+              </select></label>
+              <button type="button" class="button" data-add-guard ${availableGuardSplitters.length ? "" : "disabled"}>Add to chain</button>
             </div>
-            <div class="quick-fields two">
+            ${guardChain.length ? `<ol class="quick-guard-chain" aria-label="Selected Guard Split order">
+              ${guardChain.map((user, index) => `<li>
+                <span class="quick-guard-position" aria-hidden="true">${index + 1}</span>
+                <span class="quick-guard-name"><strong>${escapeHtml(user.name)}</strong><small>Def / SpD ${fmt(user.def)} / ${fmt(user.spd)}</small></span>
+                <span class="quick-guard-actions">
+                  <button type="button" data-move-guard="${user.key}" data-guard-direction="up" aria-label="Move ${escapeHtml(user.name)} up" title="Move up" ${index === 0 ? "disabled" : ""}>\u2191</button>
+                  <button type="button" data-move-guard="${user.key}" data-guard-direction="down" aria-label="Move ${escapeHtml(user.name)} down" title="Move down" ${index === guardChain.length - 1 ? "disabled" : ""}>\u2193</button>
+                  <button type="button" class="quick-guard-remove" data-remove-guard="${user.key}" aria-label="Remove ${escapeHtml(user.name)} from Guard Split order">Remove</button>
+                </span>
+              </li>`).join("")}
+            </ol>` : `<p class="quick-guard-empty">No Guard Split users added.</p>`}
+            <div class="quick-fields two quick-custom-guard-fields">
               <label><span>Custom Def</span><input type="number" min="1" data-cfg="customGuardDef" value="${this.cfg.customGuardDef}"></label>
               <label><span>Custom SpD</span><input type="number" min="1" data-cfg="customGuardSpd" value="${this.cfg.customGuardSpd}"></label>
             </div>
@@ -808,10 +848,7 @@ export class QuickCalc {
   }
 
   resultsPanel(calc) {
-    const rolls = calc.result.rolls || [];
-    const displayedRolls = rolls.map(getMyuuDisplayedDamage);
-    const displayedMin = displayedRolls.length ? Math.min(...displayedRolls) : 0;
-    const displayedMax = displayedRolls.length ? Math.max(...displayedRolls) : 0;
+    const displayed = getMyuuDisplayedDamageRange(calc.result.min, calc.result.max);
     const reverse = this.cfg.reverse;
     const summary = this.resultSummary(calc);
     return `
@@ -828,7 +865,7 @@ export class QuickCalc {
             <p class="quick-roll-range-line"><span>Roll Range</span><strong>${escapeHtml(calc.result.rollRange?.label || this.rollRangeModel().label)}</strong></p>
             <div class="quick-simple-results">
               <div><span>Raw Damage</span><strong>${fmt(calc.result.min)} - ${fmt(calc.result.max)}</strong></div>
-              <div class="myuu-range"><span>Myuu Displayed Damage</span><strong>${fmt(displayedMin)} - ${fmt(displayedMax)}</strong></div>
+              <div class="myuu-range"><span>Myuu Displayed Damage</span><strong>${fmt(displayed.min)} - ${fmt(displayed.max)}</strong></div>
             </div>
             <p class="quick-formula">Myuu damage wraps after ${fmt(MYUU_DAMAGE_CAP)}.</p>
             <p class="quick-formula">Based on the selected damage roll range.</p>
@@ -902,14 +939,6 @@ export class QuickCalc {
         this.cfg.reverse = null;
         this.scheduleQuickCalcSave();
         this.render();
-      } else if (field.matches("[data-guard-user]")) {
-        const key = field.dataset.guardUser;
-        this.cfg.guardUsers = field.checked
-          ? [...new Set([...this.cfg.guardUsers, key])]
-          : this.cfg.guardUsers.filter((item) => item !== key);
-        this.cfg.reverse = null;
-        this.scheduleQuickCalcSave();
-        this.render();
       } else if (field.matches("[data-preset]") && field.value) {
         this.applyPreset(field.value);
       } else if (field.matches("[data-boss-search]")) {
@@ -946,6 +975,12 @@ export class QuickCalc {
       if (button.matches("[data-pick-boss]")) this.loadBoss(button.dataset.pickBoss);
       else if (button.matches("[data-pick-attacker]")) this.loadAttacker(button.dataset.pickAttacker);
       else if (button.matches("[data-pick-move]")) this.loadMove(button.dataset.pickMove);
+      else if (button.matches("[data-add-guard]")) {
+        const select = this.root.querySelector("[data-guard-add-select]");
+        this.addGuardSplitter(select?.value);
+      }
+      else if (button.matches("[data-move-guard]")) this.moveGuardSplitter(button.dataset.moveGuard, button.dataset.guardDirection);
+      else if (button.matches("[data-remove-guard]")) this.removeGuardSplitter(button.dataset.removeGuard);
       else if (button.matches("[data-pick-item]")) {
         this.cfg.item = button.dataset.pickItem;
         this.itemQuery = "";
@@ -989,6 +1024,39 @@ export class QuickCalc {
   updateConfigField(field) {
     this.cfg[field.dataset.cfg] = field.value;
     this.cfg.reverse = null;
+  }
+
+  commitGuardSplitOrder(message) {
+    this.cfg.guardSplitOrder = normalizeGuardSplitOrder(this.cfg.guardSplitOrder);
+    this.cfg.reverse = null;
+    this.status = message;
+    this.scheduleQuickCalcSave();
+    this.render();
+  }
+
+  addGuardSplitter(key) {
+    if (!GUARD_SPLITTER_KEYS.includes(key) || this.cfg.guardSplitOrder.includes(key)) return;
+    this.cfg.guardSplitOrder = [...this.cfg.guardSplitOrder, key];
+    const name = key === CUSTOM_GUARD_SPLITTER ? "Custom" : QUICK_CALC_GUARD_SPLIT_USERS[key].name;
+    this.commitGuardSplitOrder(`${name} added to Guard Split order`);
+  }
+
+  removeGuardSplitter(key) {
+    if (!this.cfg.guardSplitOrder.includes(key)) return;
+    this.cfg.guardSplitOrder = this.cfg.guardSplitOrder.filter((item) => item !== key);
+    const name = key === CUSTOM_GUARD_SPLITTER ? "Custom" : QUICK_CALC_GUARD_SPLIT_USERS[key]?.name;
+    this.commitGuardSplitOrder(`${name || "Splitter"} removed from Guard Split order`);
+  }
+
+  moveGuardSplitter(key, direction) {
+    const order = [...this.cfg.guardSplitOrder];
+    const index = order.indexOf(key);
+    const nextIndex = direction === "up" ? index - 1 : index + 1;
+    if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
+    [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+    this.cfg.guardSplitOrder = order;
+    const name = key === CUSTOM_GUARD_SPLITTER ? "Custom" : QUICK_CALC_GUARD_SPLIT_USERS[key]?.name;
+    this.commitGuardSplitOrder(`${name || "Splitter"} moved ${direction}`);
   }
 
   normalizeConfigField(field) {
@@ -1202,6 +1270,7 @@ export class QuickCalc {
     Object.entries(preset).forEach(([field, value]) => {
       if (!["label", "boss", "attacker", "move"].includes(field)) this.cfg[field] = Array.isArray(value) ? [...value] : value;
     });
+    this.cfg.guardSplitOrder = normalizeGuardSplitOrder(this.cfg.guardSplitOrder);
     this.cfg.reverse = null;
     this.status = `Applied preset: ${preset.label}`;
     if (rerender) {
@@ -1212,7 +1281,7 @@ export class QuickCalc {
 
   exportData() {
     return {
-      version: 2,
+      version: 3,
       config: {
         ...this.cfg,
         boss: this.cfg.boss?.name || null,
@@ -1235,8 +1304,11 @@ export class QuickCalc {
       const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       const saved = JSON.parse(raw || "null");
       if (!saved?.config) throw new Error("No saved calc");
-      const { boss, attacker, move, ...rest } = saved.config;
-      this.cfg = { ...this.defaultConfig(), ...rest };
+      const { boss, attacker, move, guardUsers, customGuardEnabled, ...rest } = saved.config;
+      const legacyOrder = Array.isArray(guardUsers) ? guardUsers : [];
+      const savedOrder = Array.isArray(rest.guardSplitOrder) ? [...rest.guardSplitOrder] : [...legacyOrder];
+      if (!Array.isArray(rest.guardSplitOrder) && customGuardEnabled) savedOrder.push(CUSTOM_GUARD_SPLITTER);
+      this.cfg = { ...this.defaultConfig(), ...rest, guardSplitOrder: normalizeGuardSplitOrder(savedOrder) };
       const loadSequence = sequence ?? ++this.sequence;
       if (boss) await this.loadBossForSequence(boss, false, loadSequence);
       if (loadSequence !== this.sequence) return false;
@@ -1244,7 +1316,7 @@ export class QuickCalc {
       if (loadSequence !== this.sequence) return false;
       if (move) await this.loadMoveForSequence(move, false, loadSequence);
       if (loadSequence !== this.sequence) return false;
-      Object.assign(this.cfg, rest, { reverse: null });
+      Object.assign(this.cfg, rest, { guardSplitOrder: normalizeGuardSplitOrder(savedOrder), reverse: null });
       if (!silent) this.status = "Quick Calc loaded";
       if (rerender) this.render();
       return true;
