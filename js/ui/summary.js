@@ -1,6 +1,7 @@
 import { compactNumber, displayName, titleCase } from "../utils/format.js";
 
 const effectLabel = (value) => value === 0 ? "Immune" : value > 1 ? `${value}× Super` : value < 1 ? `${value}× Resist` : "1×";
+const publicNotes = (notes = []) => notes.filter((note) => !/(?:Defense|Sp\. Defense|Attack|Sp\. Attack|Speed|HP)\s*(?:changed|stage|:).*?(?:→|->|\d)/i.test(note));
 
 export class Summary {
   constructor(root, state) {
@@ -16,6 +17,7 @@ export class Summary {
     if (isBattle || log.length > 0) {
       const startHp = this.state.bossMaxHP || (this.state.bossBaseStats?.hp || 0);
       const remaining = this.state.bossHP;
+      const bossProgress = Math.max(0, Math.min(100, ((startHp - remaining) / (startHp || 1)) * 100));
       const totalDamage = log.reduce((sum, turn) => sum + turn.playerDamage, 0);
 
       // Find best hit
@@ -54,7 +56,7 @@ export class Summary {
             <div><span class="eyebrow">Raid simulator</span><h2 id="summary-title">Raid summary</h2></div>
             <div class="summary-metrics" style="display:flex; flex-wrap:wrap; gap:8px;">
               <div><span>Total damage</span><strong>${totalDamage.toLocaleString()}</strong></div>
-              <div><span>Boss HP remaining</span><strong>${remaining.toLocaleString()} / ${startHp.toLocaleString()}</strong></div>
+              <div><span>Boss progress</span><strong>${bossProgress.toFixed(1)}% dealt</strong></div>
               <div class="${outcomeClass}"><span>Outcome</span><strong>${outcomeLabel}</strong></div>
               <div><span>Fainted Allies</span><strong>${this.state.faintedAlliesCount}</strong></div>
             </div>
@@ -86,10 +88,10 @@ export class Summary {
                   </div>
                 </div>
                 <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-top:4px; padding-top:4px; border-top:1px dashed var(--border-soft);">
-                  <span>Boss HP: <strong>${row.bossHPAfter.toLocaleString()}</strong></span>
+                  <span>Boss progress: <strong>${Math.max(0, Math.min(100, ((startHp - row.bossHPAfter) / (startHp || 1)) * 100)).toFixed(1)}% dealt</strong></span>
                   <span>Active HP: <strong>${row.playerHPAfter.toLocaleString()}</strong></span>
                 </div>
-                ${row.notes.length > 0 ? `<div style="font-size:10px; color:var(--amber); margin-top:3px; padding-top:2px; border-top:1px solid rgba(255,255,255,0.05);"><strong>Notes:</strong> ${row.notes.join(". ")}</div>` : ""}
+                ${publicNotes(row.notes).length > 0 ? `<div style="font-size:10px; color:var(--amber); margin-top:3px; padding-top:2px; border-top:1px solid rgba(255,255,255,0.05);"><strong>Notes:</strong> ${publicNotes(row.notes).join(". ")}</div>` : ""}
               </div>
             `).reverse().join("")}
           </div>
@@ -113,15 +115,15 @@ export class Summary {
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Turn</th><th>Active Pokémon</th><th>Move</th><th>Type</th><th>Category</th><th>Original power</th><th>Used power</th><th>Held item</th><th>Item modifier notes</th><th>Effect</th><th>Normal range</th><th>Critical range</th><th>Boss HP</th><th>Notes</th></tr></thead>
+            <thead><tr><th>Turn</th><th>Active Pokémon</th><th>Move</th><th>Type</th><th>Category</th><th>Original power</th><th>Used power</th><th>Held item</th><th>Item modifier notes</th><th>Effect</th><th>Normal range</th><th>Critical range</th><th>Notes</th></tr></thead>
             <tbody>${rows.length ? rows.map((row) => `<tr>
               <td>${row.turn}</td><td>${displayName(row.pokemon)}</td><td>${titleCase(row.moveName)}</td>
               <td><span class="type-badge type-${row.moveType}">${row.moveType}</span></td><td>${titleCase(row.category)}</td>
               <td>${row.originalPower}</td><td><strong>${row.usedPower}</strong></td><td>${titleCase(row.heldItem)}</td><td>${row.itemNotes}</td>
               <td>${effectLabel(row.effectiveness)}</td><td>${row.normalLabel}<small>${row.normal.percent[0].toFixed(3)}–${row.normal.percent[1].toFixed(3)}%</small></td>
               <td>${row.criticalLabel}<small>${row.critical.percent[0].toFixed(3)}–${row.critical.percent[1].toFixed(3)}%</small></td>
-              <td>${row.hp.toLocaleString()}</td><td>${row.note}</td>
-            </tr>`).join("") : `<tr><td colspan="14" class="empty-table">Start a battle, then execute turns to generate the battle log.</td></tr>`}</tbody>
+              <td>${row.note}</td>
+            </tr>`).join("") : `<tr><td colspan="13" class="empty-table">Start a battle, then execute turns to generate the battle log.</td></tr>`}</tbody>
           </table>
         </div>
       </section>`;

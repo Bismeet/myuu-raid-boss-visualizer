@@ -238,7 +238,7 @@ function formatBattleLogTurnHTML(log, state) {
   let html = `<div class="battle-chat-turn">`;
   html += `<div class="chat-turn-title">Turn ${log.turn}</div>`;
 
-  const messagesToRender = Array.isArray(log.messages)
+  const rawMessages = Array.isArray(log.messages)
     ? log.messages
     : (Array.isArray(log.notes) ? log.notes.map(note => {
         let clean = note.trim();
@@ -270,6 +270,7 @@ function formatBattleLogTurnHTML(log, state) {
         }
         return finalNote;
       }) : []);
+  const messagesToRender = rawMessages.filter((message) => !/(?:Defense|Sp\. Defense|Attack|Sp\. Attack|Speed|HP)\s*(?:changed|stage|:).*?(?:→|->|\d)/i.test(message));
 
   messagesToRender.forEach((msg) => {
     let cssClass = "chat-narration-line";
@@ -291,7 +292,7 @@ function formatBattleLogTurnHTML(log, state) {
   });
 
   // Collapsible [Damage details] box
-  if (log.playerDamageDetails || log.bossDamageDetails) {
+  if (false && (log.playerDamageDetails || log.bossDamageDetails)) {
     html += `<details style="margin: 6px 0 6px 0;">`;
     html += `<summary class="chat-details-summary" style="margin:0; cursor:pointer; color:var(--cyan); font-size:10px; font-weight:800; outline:none; user-select:none;">[Damage details]</summary>`;
     html += `<div class="chat-details-box" style="margin-top: 4px; padding: 6px; border: 1px solid var(--border-soft); border-radius: 4px; background: var(--bg-card); font-size: 10px; line-height: 1.45; color: var(--muted);">`;
@@ -339,6 +340,11 @@ export class BattleScene {
     this.simulator = simulator;
     this.busy = false;
     this.lastAnimatedTurn = 0;
+    this.controlMessage = "";
+    this.showRecoverControls = false;
+    this.recoveryTimer = null;
+    this.resolutionRunId = 0;
+    this.animationRunId = 0;
 
     // UI Battle Pending Actions State
     this.selectedMoveIndex = 0;
@@ -355,10 +361,71 @@ export class BattleScene {
     return this.busy || this.state.isResolvingTurn;
   }
 
-  releaseTurnLockIfIdle() {
-    if (!this.busy && this.state.isResolvingTurn) {
-      this.state.isResolvingTurn = false;
+  safeRender() {
+    try {
       this.render();
+    } catch (error) {
+      console.error("Battle render failed", error);
+    }
+  }
+
+  startRecoveryTimer() {
+    clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = setTimeout(() => {
+      if (!this.controlsLocked()) return;
+      this.showRecoverControls = true;
+      this.controlMessage = "Battle controls are taking longer than expected.";
+      this.safeRender();
+    }, 3500);
+  }
+
+  recoverControls(message = "Controls restored. You can choose an action again.") {
+    this.resolutionRunId += 1;
+    this.animationRunId += 1;
+    clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = null;
+    this.busy = false;
+    this.state.isResolvingTurn = false;
+    this.showRecoverControls = false;
+    this.controlMessage = message;
+    this.lastAnimatedTurn = Math.max(this.lastAnimatedTurn, Number(this.state.battleLog.at(-1)?.turn) || 0);
+    this.playerAction = "use-move";
+    this.selectedMoveIndex = 0;
+    this.batonPassSelecting = false;
+    this.safeRender();
+  }
+
+  async resolveTurnSafe(action, { animate = true } = {}) {
+    if (this.controlsLocked()) return false;
+    const runId = ++this.resolutionRunId;
+    const previousLogLength = this.state.battleLog.length;
+    this.state.isResolvingTurn = true;
+    this.controlMessage = "Resolving turn…";
+    this.showRecoverControls = false;
+    this.startRecoveryTimer();
+    this.safeRender();
+
+    try {
+      await action();
+      const newLog = this.state.battleLog.length > previousLogLength ? this.state.battleLog.at(-1) : null;
+      if (animate && newLog && this.state.battleActive) await this.playTurnAnimations(newLog);
+      return true;
+    } catch (error) {
+      console.error("Battle turn failed:", error);
+      this.controlMessage = "Something went wrong resolving the turn. Controls were restored.";
+      return false;
+    } finally {
+      if (runId !== this.resolutionRunId) return;
+      clearTimeout(this.recoveryTimer);
+      this.recoveryTimer = null;
+      this.busy = false;
+      this.state.isResolvingTurn = false;
+      this.showRecoverControls = false;
+      this.playerAction = "use-move";
+      this.selectedMoveIndex = 0;
+      this.batonPassSelecting = false;
+      if (this.controlMessage === "Resolving turn…") this.controlMessage = "";
+      this.safeRender();
     }
   }
 
@@ -469,7 +536,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
             <div class="battle-callout" id="battle-callout"><strong>${calloutAction}</strong><span>${calloutDetail}</span></div>
             <div class="combatant defender">
               <div class="boss-health">
-                <div><strong>${boss ? displayName(boss.name) : "Loading boss"}</strong><span>${hp.toLocaleString()} / ${maxHp.toLocaleString()}</span></div>
+                <div><strong>${boss ? displayName(boss.name) : "Loading boss"}</strong><span>${Math.round(hpPercent)}% HP</span></div>
                 <div class="hp-track"><span style="width:${hpPercent}%"></span></div>
               </div>
               ${boss ? `<img id="boss-sprite" src="${spriteUrl(boss.name)}" data-fallback="${fallbackSprite(boss)}" alt="${displayName(boss.name)}">` : ""}
@@ -695,7 +762,6 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
               <div class="boss-health" style="position:static; display:grid; gap:2px; margin-bottom:6px; min-width:140px; text-align:right;">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                   <strong style="font-size:11px;">${getBossDisplayName(this.state)}</strong>
-                  <span style="font-size:9px; color:var(--muted);">Lv. 200</span>
                 </div>
                 <div class="type-row" style="justify-content:flex-end;">
                   ${bossTypes.map((t) => `<span class="type-badge type-${t}" style="font-size:7px; padding:1px 3px;">${t}</span>`).join("")}
@@ -705,10 +771,8 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
               <img id="boss-sprite" src="${spriteUrl(boss.name)}" data-fallback="${fallbackSprite(boss)}" alt="${boss.name}" style="width:110px; height:110px; object-fit:contain; transition: transform 0.25s ease; ${bossHp <= 0 ? 'opacity: 0.3; filter: grayscale(1);' : ''}">
               
               <div class="hp-track" style="width:130px; height:6px; margin-top:6px;"><span id="boss-hp-bar" style="width:${bossHpPercent}%"></span></div>
-              <div id="boss-hp-text" style="font-size:10px; color:var(--muted); margin-top:2px;">${compactNumber(bossHp)} / ${compactNumber(bossMaxHp)} HP ${bossHp <= 0 ? '<strong style="color:var(--danger); font-size:9px; margin-left:4px;">[FAINTED]</strong>' : ''}</div>
+              <div id="boss-hp-text" style="font-size:10px; color:var(--muted); margin-top:2px;">${Math.round(bossHpPercent)}% HP ${bossHp <= 0 ? '<strong style="color:var(--danger); font-size:9px; margin-left:4px;">[FAINTED]</strong>' : ''}</div>
  
-              <!-- Defender Stats Hover Tooltip -->
-              ${getBossTooltipHTML(this.state)}
             </div>
             
             <!-- Damage Floats -->
@@ -733,6 +797,11 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
 
           <div class="battle-command-panel">
             ${commandPanelHTML}
+            ${(this.controlMessage || (this.showRecoverControls && controlsLocked)) ? `
+              <div class="battle-control-status" role="status">
+                <span>${this.controlMessage || "Battle controls are taking longer than expected."}</span>
+                ${this.showRecoverControls && controlsLocked ? `<button type="button" id="recover-controls-btn" class="button">Recover Controls</button>` : ""}
+              </div>` : ""}
             
             <!-- Horizontal Battle Controls Bar -->
             <div class="battle-settings-bar">
@@ -761,7 +830,6 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
               </div>
 
               <div class="battle-utility-actions">
-                <button type="button" id="toggle-formula-btn" class="button" style="min-height:28px; padding: 2px 10px; font-size:10px; cursor:pointer;">Damage Formula</button>
                 <button type="button" id="undo-turn-btn" class="button" style="min-height:28px; padding: 2px 10px; font-size:10px; cursor:pointer;" ${this.state.history.length > 0 && !controlsLocked ? "" : "disabled"}>Undo Turn</button>
                 <button type="button" id="new-battle-btn" class="button" style="min-height:28px; padding: 2px 10px; font-size:10px; cursor:pointer;" ${controlsLocked ? "disabled" : ""}>New Battle</button>
                 <button type="button" id="reset-battle-btn" class="button danger-text" style="min-height:28px; padding: 2px 10px; font-size:10px; color:var(--danger); border-color:rgba(255,100,124,0.3); cursor:pointer;" ${controlsLocked ? "disabled" : ""}>Reset Battle</button>
@@ -771,7 +839,6 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
           </div>
         </div>
       </section>
-      ${formulaModalHTML}
     `;
 
     this.bindBattleControls();
@@ -783,7 +850,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     }
 
     // Trigger animations if needed
-    if (hasUnanimatedLog && !this.busy) {
+    if (hasUnanimatedLog && !this.busy && !this.state.isResolvingTurn) {
       this.playTurnAnimations(lastLog);
     }
   }
@@ -804,6 +871,8 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
   bindBattleControls() {
     const state = this.state;
 
+    this.root.querySelector("#recover-controls-btn")?.addEventListener("click", () => this.recoverControls());
+
     this.root.querySelector("#resume-battle-btn")?.addEventListener("click", () => {
       state.needsResume = false;
       state.battleActive = true;
@@ -820,16 +889,8 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
         const slot = Number(btn.dataset.slot);
         
         if (state.awaitingForcedSwitch) {
-          state.isResolvingTurn = true;
           btn.disabled = true;
-          try {
-            state.executeForcedSwitch(slot);
-            this.releaseTurnLockIfIdle();
-          } catch (e) {
-            state.isResolvingTurn = false;
-            btn.disabled = false;
-            alert(e.message);
-          }
+          this.resolveTurnSafe(() => state.executeForcedSwitch(slot));
         } else if (this.batonPassSelecting) {
           this.playerAction = "baton-pass";
           this.selectedSwitchSlot = slot;
@@ -928,21 +989,6 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
       this.render();
     });
 
-    const toggleFormulaBtn = this.root.querySelector("#toggle-formula-btn");
-    toggleFormulaBtn?.addEventListener("click", () => {
-      this.showFormulaPanel = true;
-      this.render();
-    });
-
-    this.root.querySelector("#close-formula-modal-btn")?.addEventListener("click", () => {
-      this.showFormulaPanel = false;
-      this.render();
-    });
-
-    this.root.querySelector("#close-formula-modal-btn-ok")?.addEventListener("click", () => {
-      this.showFormulaPanel = false;
-      this.render();
-    });
 
     const bossActionSelect = this.root.querySelector("#boss-action-select");
     bossActionSelect?.addEventListener("change", (e) => {
@@ -963,24 +1009,24 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
 
     this.root.querySelector("#new-battle-btn")?.addEventListener("click", () => {
       if (this.controlsLocked()) return;
-      try {
+      this.resolveTurnSafe(() => {
         state.startNewBattleFromCurrentSetup();
         this.lastAnimatedTurn = 0;
         state.battleActive = true;
         state.uiMode = "battle";
         if (window.myuuRaid?.navigate) window.myuuRaid.navigate("battle");
         else if (window.myuuRaid?.renderAll) window.myuuRaid.renderAll();
-        else this.render();
-      } catch (error) {
-        alert(error.message);
-      }
+        else this.safeRender();
+      }, { animate: false });
     });
 
     this.root.querySelector("#reset-battle-btn")?.addEventListener("click", () => {
       if (this.controlsLocked()) return;
       if (confirm("Reset current battle simulation?")) {
-        this.lastAnimatedTurn = 0;
-        state.resetBattle();
+        this.resolveTurnSafe(() => {
+          this.lastAnimatedTurn = 0;
+          state.resetBattle();
+        }, { animate: false });
       }
     });
 
@@ -1000,26 +1046,26 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
   }
 
   executeActiveTurn() {
-    if (this.controlsLocked()) return;
-    this.state.isResolvingTurn = true;
-    try {
-      const terastallizeCheckbox = this.root.querySelector("#terastallize-checkbox");
-      const shouldTera = terastallizeCheckbox ? terastallizeCheckbox.checked : false;
+    if (this.controlsLocked()) return Promise.resolve(false);
+    const terastallizeCheckbox = this.root.querySelector("#terastallize-checkbox");
+    const shouldTera = terastallizeCheckbox ? terastallizeCheckbox.checked : false;
+    const action = this.playerAction;
+    const moveIndex = this.selectedMoveIndex;
+    const switchSlot = this.selectedSwitchSlot;
+    const bossAction = this.bossAction;
+    const bossMoveIndex = this.bossMoveIndex;
+
+    return this.resolveTurnSafe(() => {
       this.state.executeTurn(
-        this.playerAction,
-        this.selectedMoveIndex,
-        this.selectedSwitchSlot,
-        this.bossAction,
-        this.bossMoveIndex,
+        action,
+        moveIndex,
+        switchSlot,
+        bossAction,
+        bossMoveIndex,
         shouldTera
       );
       this.shouldTerastallize = false;
-      this.releaseTurnLockIfIdle();
-    } catch (err) {
-      this.state.isResolvingTurn = false;
-      alert(err.message);
-      this.render();
-    }
+    });
   }
 
   triggerAttack(attackerSide) {
@@ -1066,7 +1112,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     if (bar) bar.style.width = `${pct}%`;
     if (text) {
       if (side === "boss") {
-        text.textContent = `${compactNumber(current)} / ${compactNumber(max)} HP`;
+        text.textContent = `${Math.round(pct)}% HP`;
       } else {
         text.textContent = `${current} / ${max} HP`;
       }
@@ -1074,10 +1120,16 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
   }
 
   async playTurnAnimations(log) {
+    const animationId = ++this.animationRunId;
+    const wait = async (delay) => {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return animationId === this.animationRunId;
+    };
     this.busy = true;
     try {
-      const playerMon = this.state.team[log.activeSlot];
-      const callout = document.querySelector("#battle-callout");
+      const playerMon = this.state.team[log.activeSlot] || this.state.team[this.state.activeSlot];
+      const callout = this.root.querySelector("#battle-callout");
+      if (!playerMon?.pokemon) return;
       
       const playerGoesFirst = log.playerMovedFirst;
       const steps = [];
@@ -1090,6 +1142,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
       }
 
       for (const step of steps) {
+        if (animationId !== this.animationRunId) return;
         if (step.side === "player") {
           if (step.action === "switch" || step.action === "switch-forced" || step.action === "baton-pass") {
             if (callout) {
@@ -1099,13 +1152,13 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
             if (sprite) {
               sprite.style.opacity = "0";
               sprite.style.transform = "scale(0.5)";
-              await new Promise(r => setTimeout(r, 200));
+              if (!await wait(120)) return;
               sprite.src = spriteUrl(playerMon.pokemon.name);
               sprite.style.opacity = "1";
               sprite.style.transform = "scale(1)";
             }
-            await new Promise(r => setTimeout(r, 600));
-          } else if (step.action === "use-move") {
+            if (!await wait(260)) return;
+          } else if (step.action === "use-move" || step.action === "use-z-move") {
             const moveData = playerMon.moves.find((move) => move?.name === log.playerMove) || playerMon.moves[this.selectedMoveIndex];
             const isStatus = moveData && (moveData.damage_class?.name === "status" || !(moveData.customPower ?? moveData.basePower ?? moveData.power));
 
@@ -1118,14 +1171,14 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
             } else {
               this.triggerAttack("player");
             }
-            await new Promise(r => setTimeout(r, 200));
+            if (!await wait(140)) return;
             
             if (step.damage > 0) {
               this.showDamageFloat("boss", step.damage);
               const bossHPAfterStep = Math.max(0, log.bossHPBefore - step.damage);
               this.updateHPDisplay("boss", bossHPAfterStep, this.state.bossMaxHP);
             }
-            await new Promise(r => setTimeout(r, 700));
+            if (!await wait(300)) return;
           }
         } else {
           if (this.state.bossHP <= 0 && step.damage === 0) continue; 
@@ -1143,73 +1196,84 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
             } else {
               this.triggerAttack("boss");
             }
-            await new Promise(r => setTimeout(r, 200));
+            if (!await wait(140)) return;
             
             if (step.damage > 0) {
               this.showDamageFloat("player", step.damage);
               const playerHPAfterStep = Math.max(0, log.playerHPAfter); 
               this.updateHPDisplay("player", playerHPAfterStep, playerMon.stats.hp);
             }
-            await new Promise(r => setTimeout(r, 700));
+            if (!await wait(300)) return;
           } else {
             if (callout) {
               callout.innerHTML = `<strong>Do Nothing</strong><span>Boss did nothing</span>`;
             }
-            await new Promise(r => setTimeout(r, 650));
+            if (!await wait(220)) return;
           }
         }
       }
 
       if (log.notes.length > 0) {
-        for (const note of log.notes) {
+        for (const note of log.notes.filter((entry) => !/(?:Defense|Sp\. Defense|Attack|Sp\. Attack|Speed|HP)\s*(?:changed|stage|:).*?(?:→|->|\d)/i.test(entry)).slice(-3)) {
+          if (animationId !== this.animationRunId) return;
           if (callout) {
             callout.innerHTML = `<strong>Battle Alert</strong><span style="font-size:10px; display:block; padding:4px;">${note}</span>`;
           }
           if (note.includes("terastallized into the")) {
             this.triggerStatusGlow("player");
           }
-          await new Promise(r => setTimeout(r, 900));
+          if (!await wait(220)) return;
         }
       }
 
       this.lastAnimatedTurn = log.turn;
+    } catch (error) {
+      console.error("Battle animation failed:", error);
+      this.lastAnimatedTurn = Math.max(this.lastAnimatedTurn, Number(log?.turn) || 0);
+      this.controlMessage = "The turn completed, but its animation was skipped. Controls were restored.";
     } finally {
-      this.busy = false;
-      this.state.isResolvingTurn = false;
-      
-      // Reset selections after move execution
-      this.playerAction = "use-move";
-      this.selectedMoveIndex = 0;
-      
-      this.render(); 
+      if (animationId === this.animationRunId) {
+        this.busy = false;
+        if (!this.state.isResolvingTurn) this.safeRender();
+      }
     }
   }
 
   async simulateAll() {
     if (this.busy || !this.state.boss) return;
     this.busy = true;
-    const rows = this.simulator.run(21);
-    this.state.results = [];
-    for (const row of rows) {
-      this.state.results.push(row);
-      this.state.cursor = row.turn;
-      this.render();
-      await this.animate(row);
+    try {
+      const rows = this.simulator.run(21);
+      this.state.results = [];
+      for (const row of rows) {
+        this.state.results.push(row);
+        this.state.cursor = row.turn;
+        this.safeRender();
+        await this.animate(row);
+      }
+    } catch (error) {
+      console.error("Battle simulation failed:", error);
+    } finally {
+      this.busy = false;
+      this.state.emit("simulation");
     }
-    this.busy = false;
-    this.state.emit("simulation");
   }
 
   async step() {
     if (this.busy || !this.state.boss || this.state.cursor >= 21) return;
     this.busy = true;
-    const rows = this.simulator.run(this.state.cursor + 1);
-    this.state.results = rows;
-    this.state.cursor = rows.length;
-    this.render();
-    await this.animate(rows.at(-1));
-    this.busy = false;
-    this.state.emit("simulation");
+    try {
+      const rows = this.simulator.run(this.state.cursor + 1);
+      this.state.results = rows;
+      this.state.cursor = rows.length;
+      this.safeRender();
+      await this.animate(rows.at(-1));
+    } catch (error) {
+      console.error("Battle step failed:", error);
+    } finally {
+      this.busy = false;
+      this.state.emit("simulation");
+    }
   }
 
   animate(row) {
@@ -1220,8 +1284,10 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     if (row.normal.max > 0) {
       attacker?.classList.add("lunge");
       boss?.classList.add("hit");
-      float.textContent = `−${Math.round((row.normal.min + row.normal.max) / 2).toLocaleString()}`;
-      float.classList.add("show");
+      if (float) {
+        float.textContent = `−${Math.round((row.normal.min + row.normal.max) / 2).toLocaleString()}`;
+        float.classList.add("show");
+      }
     }
     return new Promise((resolve) => setTimeout(resolve, 380));
   }
@@ -1229,7 +1295,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
   copy() {
     const lines = [
       `Myuu Raid — ${this.state.boss ? displayName(this.state.boss.name) : "Boss"}`,
-      ...this.state.results.map((row) => `T${row.turn} ${displayName(row.pokemon)} — ${titleCase(row.action)} | ${row.normalLabel} normal | ${row.criticalLabel} crit | HP ${row.hp.toLocaleString()}`),
+      ...this.state.results.map((row) => `T${row.turn} ${displayName(row.pokemon)} — ${titleCase(row.action)} | ${row.normalLabel} normal | ${row.criticalLabel} crit`),
     ];
     copyText(lines.join("\n"));
     const button = this.root.querySelector("#simulate-all") || this.root.querySelector("#copy-summary");

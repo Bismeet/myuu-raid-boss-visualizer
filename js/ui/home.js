@@ -34,7 +34,7 @@ export class HomeView {
           <span class="encounter-kicker">Current encounter</span>
           ${boss ? `
             <img src="${spriteUrl(boss.name)}" data-fallback="${fallbackSprite(boss)}" alt="${displayName(boss.name)}">
-            <div><strong>${displayName(boss.name)}</strong><span>Lv. 200 raid target</span></div>
+            <div><strong>${displayName(boss.name)}</strong><span>Raid target</span></div>
           ` : `
             <div class="home-empty-ball">?</div>
             <div><strong>No boss selected</strong><span>Visit Boss Builder to choose one.</span></div>

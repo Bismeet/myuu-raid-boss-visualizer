@@ -5,6 +5,7 @@ import { damageRolls } from "../core/damage.js";
 import { applyStage, emptyStages, stageMultiplier } from "../core/stages.js";
 import { baseStats, calculatePokemonStats } from "../core/stats.js";
 import { copyText, displayName, fallbackSprite, spriteUrl, titleCase } from "../utils/format.js";
+import { openSearchDropdown, setupSearchDropdownController } from "./search-dropdown.js";
 
 const STORAGE_KEY = "myuu-raid-quick-calc-state";
 const LEGACY_STORAGE_KEY = "myuu.quickCalc.saved";
@@ -142,7 +143,7 @@ function average(values) {
 
 export function normalizeGuardSplitOrder(order) {
   if (!Array.isArray(order)) return [];
-  return [...new Set(order.filter((key) => GUARD_SPLITTER_KEYS.includes(key)))];
+  return order.filter((key) => GUARD_SPLITTER_KEYS.includes(key));
 }
 
 export function calculateQuickCalcGuardSplits(startingDef, startingSpd, splitters = []) {
@@ -185,6 +186,7 @@ export class QuickCalc {
     this.cfg = this.defaultConfig();
     this.scheduleQuickCalc = debounce(() => this.renderResultsOnly(), 120);
     this.scheduleQuickCalcSave = debounce(() => this.saveCalc({ silent: true, rerender: false }), 400);
+    setupSearchDropdownController(this.root);
     this.bind();
     this.render();
     this.bootstrap();
@@ -595,15 +597,12 @@ export class QuickCalc {
   }
 
   resultSummary(calc) {
-    const physical = isPhysical(calc.move);
-    const stage = physical ? Number(this.cfg.atkStage) || 0 : Number(this.cfg.spaStage) || 0;
+    const stage = isPhysical(calc.move) ? Number(this.cfg.atkStage) || 0 : Number(this.cfg.spaStage) || 0;
     const stageText = stage === 0 ? "" : `${stage > 0 ? "+" : ""}${stage} `;
     const itemText = this.cfg.item ? `${titleCase(this.cfg.item)} ` : "";
     const abilityText = this.cfg.ability ? `${titleCase(this.cfg.ability)} ` : "";
     const movePower = calc.move?.customPower ?? calc.move?.basePower ?? calc.move?.power ?? "-";
-    const defenseLabel = physical ? "Defense" : "Sp. Def";
-    const defenseUsed = calc.result.defenseStat || applyStage(physical ? calc.defenses.finalDef : calc.defenses.finalSpd, physical ? calc.stages.def : calc.stages.spd);
-    return `${stageText}${itemText}${abilityText}${displayName(this.cfg.attacker?.name || "Attacker")} using ${titleCase(calc.move?.name || "Move")} (${movePower} BP) vs Level 200 ${displayName(this.cfg.boss?.name || "Boss")} with ${fmt(defenseUsed)} ${defenseLabel}`;
+    return `${stageText}${itemText}${abilityText}${displayName(this.cfg.attacker?.name || "Attacker")} using ${titleCase(calc.move?.name || "Move")} (${movePower} BP) vs Boss ${displayName(this.cfg.boss?.name || "Boss")}`;
   }
 
   resultText() {
@@ -629,9 +628,9 @@ export class QuickCalc {
       <section class="quick-calc" aria-labelledby="quick-calc-title">
         <div class="workspace-heading quick-calc-heading">
           <div>
-            <span class="eyebrow">Multiplier test bench</span>
+            <span class="eyebrow">Damage test bench</span>
             <h1 id="quick-calc-title">Quick Calc</h1>
-            <p>Fast independent damage checks for boss defenses, setup chains, stat drops, type changes, and observed Myuu logs.</p>
+            <p>Fast independent damage checks for raid setup chains, stat drops, type changes, and damage rolls.</p>
           </div>
           <div class="quick-calc-actions">
             <select data-preset aria-label="Apply preset">
@@ -640,8 +639,6 @@ export class QuickCalc {
             </select>
             <button type="button" class="button" data-save-calc>Save Quick Calc</button>
             <button type="button" class="button" data-reset-calc>Reset Quick Calc</button>
-            <button type="button" class="button" data-export-json>Export Quick Calc JSON</button>
-            <button type="button" class="button" data-import-json>Import Quick Calc JSON</button>
           </div>
         </div>
 
@@ -670,7 +667,7 @@ export class QuickCalc {
           ${attacker ? `<img src="${spriteUrl(attacker.name)}" data-fallback="${fallbackSprite(attacker)}" alt="${displayName(attacker.name)} sprite">` : ""}
         </div>
         <div class="quick-search">
-          <label><span>Attacker Pokemon</span><input data-attacker-search value="${escapeHtml(this.attackerQuery || displayName(attacker?.name || ""))}" placeholder="Search attacker..."></label>
+          <label><span>Attacker Pokemon</span><input data-attacker-search value="${escapeHtml(this.attackerQuery || displayName(attacker?.name || ""))}" placeholder="Search attacker..." autocomplete="off" aria-expanded="false"></label>
           <div class="inline-results hidden" data-attacker-results></div>
         </div>
         ${attacker ? `<div class="type-row">${types.map((type) => `<span class="type-badge type-${type}">${type}</span>`).join("")}</div>` : ""}
@@ -678,9 +675,10 @@ export class QuickCalc {
           <label><span>Level</span><input type="number" min="1" max="100" data-cfg="level" value="${this.cfg.level}"></label>
           <label><span>Nature</span><select data-cfg="nature">${Object.keys(NATURES).map((key) => `<option value="${key}" ${this.cfg.nature === key ? "selected" : ""}>${natureDropdownLabel(key)}</option>`).join("")}</select></label>
           <label><span>Ability</span><select data-cfg="ability">${[...new Set([this.cfg.ability, ...abilities].filter(Boolean))].map((name) => `<option value="${name}" ${this.cfg.ability === name ? "selected" : ""}>${titleCase(name)}</option>`).join("")}</select></label>
-          <label><span>Item</span><input data-item-search value="${escapeHtml(titleCase(this.cfg.item || ""))}" placeholder="Search item..."></label>
+          <div class="quick-search quick-field-search"><label><span>Item</span><input data-item-search value="${escapeHtml(this.itemQuery || titleCase(this.cfg.item || ""))}" placeholder="Search item..." autocomplete="off" aria-expanded="false"></label>
+            <div class="inline-results hidden" data-item-results></div>
+          </div>
         </div>
-        <div class="inline-results hidden" data-item-results></div>
         <div class="quick-fields four">
           <label><span>Atk IV</span><input type="number" min="0" max="31" data-cfg="atkIv" value="${this.cfg.atkIv}"></label>
           <label><span>Atk EV</span><input type="number" min="0" max="252" step="4" data-cfg="atkEv" value="${this.cfg.atkEv}"></label>
@@ -704,72 +702,50 @@ export class QuickCalc {
 
   bossPanel(calc) {
     const boss = this.cfg.boss;
-    const bases = this.bossBases();
     return `
-      <section class="quick-card" aria-labelledby="quick-boss-title">
-        <div class="quick-card-title">
-          <div><span class="eyebrow">Target</span><h2 id="quick-boss-title">Boss / Defender Panel</h2></div>
-          ${boss ? `<img src="${spriteUrl(boss.name)}" data-fallback="${fallbackSprite(boss)}" alt="${displayName(boss.name)} sprite">` : ""}
+      <section class="quick-card quick-boss-card" aria-labelledby="quick-boss-title">
+        <h2 id="quick-boss-title" class="sr-only">Boss / Defender Panel</h2>
+        <div class="quick-boss-showcase">
+          ${boss
+            ? `<img class="quick-boss-sprite-large" src="${spriteUrl(boss.name)}" data-fallback="${fallbackSprite(boss)}" alt="${displayName(boss.name)} sprite">`
+            : `<div class="quick-boss-sprite-placeholder" aria-hidden="true">?</div>`}
+          <p class="quick-boss-name">${escapeHtml(displayName(boss?.name || "Choose a boss"))}</p>
+          <div class="quick-boss-selector-wrap quick-search">
+            <label><span>Boss selector</span><input data-boss-search value="${escapeHtml(this.bossQuery || displayName(boss?.name || ""))}" placeholder="Search raid boss..." autocomplete="off" aria-expanded="false"></label>
+            <div class="inline-results hidden" data-boss-results></div>
+          </div>
         </div>
-        <div class="quick-search">
-          <label><span>Boss selector</span><input data-boss-search value="${escapeHtml(this.bossQuery || displayName(boss?.name || ""))}" placeholder="Search raid boss..."></label>
-          <div class="inline-results hidden" data-boss-results></div>
-        </div>
-        <div class="type-row">${this.bossTypes().map((type) => `<span class="type-badge type-${type}">${type}</span>`).join("")}</div>
-        <div class="quick-stat-strip">
-          <div><span>Boss HP</span><strong>${fmt(bossHpFromBase(bases.hp))}</strong></div>
-          <div><span>Base Def</span><strong>${bases.def}</strong></div>
-          <div><span>Normal Lv200 Def</span><strong>${fmt(calc.defenses.normalDef)}</strong></div>
-          <div><span>Final Boss Def</span><strong>${fmt(calc.defenses.finalDef)}</strong></div>
-        </div>
-        <div class="quick-base-grid">
-          ${["hp", "atk", "def", "spa", "spd", "spe"].map((key) => `<div><span>${key.toUpperCase()}</span><strong>${bases[key] ?? "-"}</strong></div>`).join("")}
-        </div>
-        <div class="quick-fields four">
-          <label><span>Boss Def multiplier</span><input type="number" min="0.1" step="0.01" data-cfg="bossDefMultiplier" value="${this.cfg.bossDefMultiplier}"></label>
-          <label><span>Boss SpD multiplier</span><input type="number" min="0.1" step="0.01" data-cfg="bossSpdMultiplier" value="${this.cfg.bossSpdMultiplier}"></label>
-          <label><span>Manual Boss Def</span><input type="number" min="1" data-cfg="manualBossDef" value="${this.cfg.manualBossDef}"></label>
-          <label><span>Manual Boss SpD</span><input type="number" min="1" data-cfg="manualBossSpd" value="${this.cfg.manualBossSpd}"></label>
-        </div>
-        <label class="quick-check"><input type="checkbox" data-cfg-check="useManualDefense" ${this.cfg.useManualDefense ? "checked" : ""}><span>Use manual Def/SpD</span></label>
-        <p class="quick-formula">Normal Lv200 Def = floor(((2 * base + 31) * 200) / 100) + 5. Final = floor(normal * multiplier).</p>
       </section>`;
   }
 
   setupPanel(calc) {
     const guardChain = this.guardChain();
-    const availableGuardSplitters = GUARD_SPLITTER_KEYS.filter((key) => !this.cfg.guardSplitOrder.includes(key));
+    const availableGuardSplitters = Object.keys(QUICK_CALC_GUARD_SPLIT_USERS);
     return `
       <section class="quick-card quick-wide" aria-labelledby="quick-setup-title">
         <div class="quick-card-title compact"><div><span class="eyebrow">Raid modifiers</span><h2 id="quick-setup-title">Myuu Raid Setup</h2></div></div>
         <div class="quick-setup-grid">
           <div class="quick-subpanel">
             <h3>Guard Split Order</h3>
-            <p class="quick-formula quick-guard-help">Add each splitter, then use the controls to set the exact sequential order.</p>
+            <p class="quick-guard-help">Add each splitter, then use the controls to set the exact sequential order.</p>
             <div class="quick-guard-add">
-              <label><span>Add splitter</span><select data-guard-add-select ${availableGuardSplitters.length ? "" : "disabled"}>
-                ${availableGuardSplitters.length
-                  ? availableGuardSplitters.map((key) => `<option value="${key}">${key === CUSTOM_GUARD_SPLITTER ? "Custom Guard Split user" : QUICK_CALC_GUARD_SPLIT_USERS[key].name}</option>`).join("")
-                  : `<option>All splitters added</option>`}
+              <label><span>Add splitter</span><select data-guard-add-select>
+                ${availableGuardSplitters.map((key) => `<option value="${key}">${QUICK_CALC_GUARD_SPLIT_USERS[key].name}</option>`).join("")}
               </select></label>
-              <button type="button" class="button" data-add-guard ${availableGuardSplitters.length ? "" : "disabled"}>Add to chain</button>
+              <button type="button" class="button" data-add-guard>Add to chain</button>
             </div>
             ${guardChain.length ? `<ol class="quick-guard-chain" aria-label="Selected Guard Split order">
-              ${guardChain.map((user, index) => `<li>
+              ${guardChain.map((user, index) => `<li data-guard-row="${index}">
                 <span class="quick-guard-position" aria-hidden="true">${index + 1}</span>
-                <span class="quick-guard-name"><strong>${escapeHtml(user.name)}</strong><small>Def / SpD ${fmt(user.def)} / ${fmt(user.spd)}</small></span>
+                <span class="quick-guard-name"><strong>${escapeHtml(user.name)}</strong></span>
                 <span class="quick-guard-actions">
-                  <button type="button" data-move-guard="${user.key}" data-guard-direction="up" aria-label="Move ${escapeHtml(user.name)} up" title="Move up" ${index === 0 ? "disabled" : ""}>\u2191</button>
-                  <button type="button" data-move-guard="${user.key}" data-guard-direction="down" aria-label="Move ${escapeHtml(user.name)} down" title="Move down" ${index === guardChain.length - 1 ? "disabled" : ""}>\u2193</button>
-                  <button type="button" class="quick-guard-remove" data-remove-guard="${user.key}" aria-label="Remove ${escapeHtml(user.name)} from Guard Split order">Remove</button>
+                  <button type="button" data-move-guard="${index}" data-guard-direction="up" aria-label="Move ${escapeHtml(user.name)} up" title="Move up" ${index === 0 ? "disabled" : ""}>\u2191</button>
+                  <button type="button" data-move-guard="${index}" data-guard-direction="down" aria-label="Move ${escapeHtml(user.name)} down" title="Move down" ${index === guardChain.length - 1 ? "disabled" : ""}>\u2193</button>
+                  <button type="button" class="quick-guard-remove" data-remove-guard="${index}" aria-label="Remove ${escapeHtml(user.name)} from Guard Split order">Remove</button>
                 </span>
               </li>`).join("")}
             </ol>` : `<p class="quick-guard-empty">No Guard Split users added.</p>`}
-            <div class="quick-fields two quick-custom-guard-fields">
-              <label><span>Custom Def</span><input type="number" min="1" data-cfg="customGuardDef" value="${this.cfg.customGuardDef}"></label>
-              <label><span>Custom SpD</span><input type="number" min="1" data-cfg="customGuardSpd" value="${this.cfg.customGuardSpd}"></label>
-            </div>
-            <div class="quick-log">${calc.defenses.log.map((line) => `<span>${escapeHtml(line)}</span>`).join("")}<strong>Final effective Boss Def/SpD: ${fmt(calc.defenses.finalDef)} / ${fmt(calc.defenses.finalSpd)}</strong></div>
+            <div class="quick-log"><strong>${guardChain.length ? `Guard Split chain applied: ${guardChain.map((user) => escapeHtml(user.name)).join(" → ")}` : "No Guard Split chain applied."}</strong></div>
           </div>
           <div class="quick-subpanel">
             <h3>Screech / Defense Drops</h3>
@@ -778,7 +754,6 @@ export class QuickCalc {
               <label><span>Defense stage</span><select data-cfg="defenseStage">${this.stageOptions(this.cfg.defenseStage)}</select></label>
               <label class="quick-check"><input type="checkbox" data-cfg-check="simpleDefense" ${this.cfg.simpleDefense ? "checked" : ""}><span>Simple Beam applied</span></label>
             </div>
-            <p class="quick-formula">Boss Defense stage: ${calc.stages.def > 0 ? "+" : ""}${calc.stages.def}. Stage multiplier: ${calc.stages.defDamageEquivalent.toFixed(2)}x damage equivalent.</p>
             <h3>Special Defense Drops</h3>
             <div class="quick-fields four">
               <label><span>Metal Sound</span><select data-cfg="metalSoundCount">${[0, 1, 2, 3].map((value) => `<option value="${value}" ${Number(this.cfg.metalSoundCount) === value ? "selected" : ""}>${value}</option>`).join("")}</select></label>
@@ -786,7 +761,6 @@ export class QuickCalc {
               <label><span>SpD stage</span><select data-cfg="spdStage">${this.stageOptions(this.cfg.spdStage)}</select></label>
               <label class="quick-check"><input type="checkbox" data-cfg-check="simpleSpd" ${this.cfg.simpleSpd ? "checked" : ""}><span>Simple Beam applied</span></label>
             </div>
-            <p class="quick-formula">Boss SpD stage: ${calc.stages.spd > 0 ? "+" : ""}${calc.stages.spd}. Stage multiplier: ${calc.stages.spdDamageEquivalent.toFixed(2)}x damage equivalent.</p>
           </div>
           <div class="quick-subpanel">
             <h3>Type Change Moves</h3>
@@ -815,7 +789,7 @@ export class QuickCalc {
         <div class="quick-card-title compact"><div><span class="eyebrow">Move and options</span><h2 id="quick-move-title">Move + Damage Options</h2></div></div>
         <div class="quick-move-grid">
           <div class="quick-search">
-            <label><span>Move</span><input data-move-search value="${escapeHtml(this.moveQuery || titleCase(move?.name || ""))}" placeholder="Search move..."></label>
+            <label><span>Move</span><input data-move-search value="${escapeHtml(this.moveQuery || titleCase(move?.name || ""))}" placeholder="Search move..." autocomplete="off" aria-expanded="false"></label>
             <div class="inline-results hidden" data-move-results></div>
           </div>
           <div class="quick-stat-strip">
@@ -841,7 +815,7 @@ export class QuickCalc {
           </div>
           <div class="quick-fields two">
             <label><span>Fainted allies count</span><input type="number" min="0" max="5" data-cfg="faintedAllies" value="${this.cfg.faintedAllies}"></label>
-            <p class="quick-formula">Last Respects power = 50 + fainted allies * 50. Current helper power: ${50 + clamp(this.cfg.faintedAllies, 0, 5) * 50}. Current roll range: ${escapeHtml(range.label)}.</p>
+            <p class="quick-guard-help">Set the number of fainted allies for the selected move.</p>
           </div>
         </div>
       </section>`;
@@ -849,7 +823,6 @@ export class QuickCalc {
 
   resultsPanel(calc) {
     const displayed = getMyuuDisplayedDamageRange(calc.result.min, calc.result.max);
-    const reverse = this.cfg.reverse;
     const summary = this.resultSummary(calc);
     return `
       <section class="quick-card quick-wide" data-quick-results aria-labelledby="quick-result-title">
@@ -867,26 +840,6 @@ export class QuickCalc {
               <div><span>Raw Damage</span><strong>${fmt(calc.result.min)} - ${fmt(calc.result.max)}</strong></div>
               <div class="myuu-range"><span>Myuu Displayed Damage</span><strong>${fmt(displayed.min)} - ${fmt(displayed.max)}</strong></div>
             </div>
-            <p class="quick-formula">Myuu damage wraps after ${fmt(MYUU_DAMAGE_CAP)}.</p>
-            <p class="quick-formula">Based on the selected damage roll range.</p>
-          </div>
-          <div class="quick-reverse">
-            <h3>Reverse Engineer Boss Modifier</h3>
-            <div class="quick-fields two">
-              <label><span>Observed Myuu damage</span><input type="number" min="0" data-cfg="observedDamage" value="${this.cfg.observedDamage}"></label>
-              <label class="quick-check"><input type="checkbox" data-cfg-check="observedCrit" ${this.cfg.observedCrit ? "checked" : ""}><span>Was it crit?</span></label>
-            </div>
-            <label class="quick-check"><input type="checkbox" data-cfg-check="observedMayBeWrapped" ${this.cfg.observedMayBeWrapped ? "checked" : ""}><span>Observed damage may be overflow-wrapped</span></label>
-            <label><span>Roll assumption</span><select data-cfg="reverseAssumption">${["unknown", "min", "average", "max"].map((mode) => `<option value="${mode}" ${this.cfg.reverseAssumption === mode ? "selected" : ""}>${titleCase(mode)}</option>`).join("")}</select></label>
-            <button type="button" class="button primary" data-estimate-defense>Estimate Boss Defense / Multiplier</button>
-            ${reverse ? `<div class="quick-reverse-output">
-              <span>Observed Myuu Damage: ${fmt(Number(this.cfg.observedDamage) || 0)}</span>
-              ${reverse.observedMayBeWrapped ? `<span>Possible Raw Damage Match: ${fmt(reverse.damage)} -> Myuu ${fmt(reverse.displayDamage)}</span>` : ""}
-              <span>Matched ${reverse.label}: ${fmt(reverse.observedMayBeWrapped ? reverse.displayDamage : reverse.damage)} (${fmt(reverse.delta)} off)</span>
-              <span>Estimated effective Boss ${reverse.defenseKind} at hit time: ${fmt(reverse.stagedDefense)}</span>
-              <span>Estimated original Boss ${reverse.defenseKind} before Guard Split: ${fmt(reverse.originalDefense)}</span>
-              <strong>Estimated multiplier: ${reverse.multiplier.toFixed(2)}x</strong>
-            </div>` : `<p class="quick-formula">Enter an observed Myuu damage value, then estimate against the current attacker, move, type, stage, and Guard Split setup.</p>`}
           </div>
         </div>
       </section>`;
@@ -924,6 +877,14 @@ export class QuickCalc {
       } else if (field.matches("[data-item-search]")) {
         this.updateItemResults(field);
       }
+    });
+
+    this.root.addEventListener("focusin", (event) => {
+      const field = event.target;
+      if (field.matches("[data-boss-search]")) this.updateBossResults(field);
+      else if (field.matches("[data-attacker-search]")) this.updateAttackerResults(field);
+      else if (field.matches("[data-move-search]")) this.updateMoveResults(field);
+      else if (field.matches("[data-item-search]")) this.updateItemResults(field);
     });
 
     this.root.addEventListener("change", (event) => {
@@ -979,8 +940,8 @@ export class QuickCalc {
         const select = this.root.querySelector("[data-guard-add-select]");
         this.addGuardSplitter(select?.value);
       }
-      else if (button.matches("[data-move-guard]")) this.moveGuardSplitter(button.dataset.moveGuard, button.dataset.guardDirection);
-      else if (button.matches("[data-remove-guard]")) this.removeGuardSplitter(button.dataset.removeGuard);
+      else if (button.matches("[data-move-guard]")) this.moveGuardSplitter(Number(button.dataset.moveGuard), button.dataset.guardDirection);
+      else if (button.matches("[data-remove-guard]")) this.removeGuardSplitter(Number(button.dataset.removeGuard));
       else if (button.matches("[data-pick-item]")) {
         this.cfg.item = button.dataset.pickItem;
         this.itemQuery = "";
@@ -1035,26 +996,26 @@ export class QuickCalc {
   }
 
   addGuardSplitter(key) {
-    if (!GUARD_SPLITTER_KEYS.includes(key) || this.cfg.guardSplitOrder.includes(key)) return;
+    if (!GUARD_SPLITTER_KEYS.includes(key)) return;
     this.cfg.guardSplitOrder = [...this.cfg.guardSplitOrder, key];
     const name = key === CUSTOM_GUARD_SPLITTER ? "Custom" : QUICK_CALC_GUARD_SPLIT_USERS[key].name;
     this.commitGuardSplitOrder(`${name} added to Guard Split order`);
   }
 
-  removeGuardSplitter(key) {
-    if (!this.cfg.guardSplitOrder.includes(key)) return;
-    this.cfg.guardSplitOrder = this.cfg.guardSplitOrder.filter((item) => item !== key);
+  removeGuardSplitter(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= this.cfg.guardSplitOrder.length) return;
+    const [key] = this.cfg.guardSplitOrder.splice(index, 1);
     const name = key === CUSTOM_GUARD_SPLITTER ? "Custom" : QUICK_CALC_GUARD_SPLIT_USERS[key]?.name;
     this.commitGuardSplitOrder(`${name || "Splitter"} removed from Guard Split order`);
   }
 
-  moveGuardSplitter(key, direction) {
+  moveGuardSplitter(index, direction) {
     const order = [...this.cfg.guardSplitOrder];
-    const index = order.indexOf(key);
     const nextIndex = direction === "up" ? index - 1 : index + 1;
-    if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
+    if (!Number.isInteger(index) || index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
     [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
     this.cfg.guardSplitOrder = order;
+    const key = order[nextIndex];
     const name = key === CUSTOM_GUARD_SPLITTER ? "Custom" : QUICK_CALC_GUARD_SPLIT_USERS[key]?.name;
     this.commitGuardSplitOrder(`${name || "Splitter"} moved ${direction}`);
   }
@@ -1120,8 +1081,8 @@ export class QuickCalc {
     this.bossQuery = input.value;
     const results = this.root.querySelector("[data-boss-results]");
     if (!results) return;
-    const matches = searchBosses(this.bossQuery, 14);
-    results.classList.remove("hidden");
+    const matches = this.bossQuery.trim() ? searchBosses(this.bossQuery, 14) : BOSSES.slice(0, 14);
+    openSearchDropdown(input, results);
     results.innerHTML = matches.map((name) => `<button type="button" data-pick-boss="${name}">${displayName(name)}</button>`).join("")
       || `<p>No listed boss found. Try a Pokedex slug.</p>`;
   }
@@ -1131,7 +1092,7 @@ export class QuickCalc {
     const results = this.root.querySelector("[data-attacker-results]");
     if (!results) return;
     const token = ++this.searchTokens.attacker;
-    results.classList.remove("hidden");
+    openSearchDropdown(input, results);
     if (this.attackerQuery.trim().length < 2) {
       results.innerHTML = "<p>Type at least two characters.</p>";
       return;
@@ -1151,7 +1112,7 @@ export class QuickCalc {
     const results = this.root.querySelector("[data-move-results]");
     if (!results) return;
     const token = ++this.searchTokens.move;
-    results.classList.remove("hidden");
+    openSearchDropdown(input, results);
     results.innerHTML = "<p>Loading moves...</p>";
     const moves = await this.ensureGlobalMoves();
     if (token !== this.searchTokens.move) return;
@@ -1167,7 +1128,7 @@ export class QuickCalc {
     const results = this.root.querySelector("[data-item-results]");
     if (!results) return;
     const token = ++this.searchTokens.item;
-    results.classList.remove("hidden");
+    openSearchDropdown(input, results);
     const items = await this.ensureGlobalItems();
     if (token !== this.searchTokens.item) return;
     const query = slug(this.itemQuery);

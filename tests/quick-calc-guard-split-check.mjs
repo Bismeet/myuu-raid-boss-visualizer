@@ -36,8 +36,16 @@ if (shuckleThenAbra.finalDef !== 257 || shuckleThenAbra.finalDef === abraThenShu
 }
 
 const restoredOrder = normalizeGuardSplitOrder(["shuckle", "abra", "custom", "shuckle", "missing"]);
-if (restoredOrder.join(",") !== "shuckle,abra,custom") {
+if (restoredOrder.join(",") !== "shuckle,abra,custom,shuckle") {
   throw new Error(`Guard Split order normalization failed: ${restoredOrder.join(",")}`);
+}
+
+const repeatedShuckle = calculateQuickCalcGuardSplits(1000, 1000, [
+  QUICK_CALC_GUARD_SPLIT_USERS.shuckle,
+  QUICK_CALC_GUARD_SPLIT_USERS.shuckle,
+]);
+if (repeatedShuckle.steps.length !== 2 || repeatedShuckle.steps[0].def !== 510 || repeatedShuckle.finalDef !== 265) {
+  throw new Error(`Repeated Shuckle splits must run independently, got ${repeatedShuckle.steps.map((step) => step.def).join(" then ")}.`);
 }
 
 console.log("Quick Calc Guard Split checks passed.");

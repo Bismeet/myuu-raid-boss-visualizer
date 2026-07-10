@@ -1280,6 +1280,33 @@ tbody tr:nth-child(even) { background:rgba(233,243,226,.5); }
 .boss-builder-view .sprite-stage img { max-width: 116px; max-height: 106px; }
 .boss-builder-view .boss-name { font-size: 30px; }
 .boss-builder-view .inline-results { max-height: 280px; }
+.boss-builder-view .boss-public-showcase { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: stretch; }
+.boss-builder-view .boss-hero-card,.boss-builder-view .boss-moves-card { min-width: 0; border: 1px solid #c7d8be; border-radius: 18px; background: linear-gradient(145deg, #fffef7, #f4f9ef); box-shadow: 0 12px 32px rgba(45,81,56,.09); }
+.boss-builder-view .boss-hero-card { min-height: 520px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 32px; text-align: center; }
+.boss-builder-view .boss-hero-sprite { width: clamp(240px,30vw,420px); height: clamp(240px,30vw,420px); object-fit: contain; filter: drop-shadow(0 24px 32px rgba(36,63,43,.2)); }
+.boss-builder-view .boss-hero-placeholder { font: 120px var(--display); color: #aac5a8; }
+.boss-builder-view .boss-hero-name { margin: 0; color: #31544f; font-size: clamp(30px,3vw,42px); }
+.boss-builder-view .boss-hero-types { justify-content: center; }
+.boss-builder-view .boss-showcase-action { margin-top: 8px; min-width: 150px; }
+.boss-builder-view .boss-change-search { position: relative; width: min(440px,100%); text-align: left; }
+.boss-builder-view .boss-change-search .inline-results,.boss-builder-view .boss-move-results { position: absolute; z-index: 9999; max-height: 260px; overflow-y: auto; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 12px 28px rgba(20,49,31,.22); }
+.boss-builder-view .boss-change-search .inline-results { left: 0; right: 0; top: calc(100% + 6px); }
+.boss-builder-view .boss-change-search .inline-results button,.boss-builder-view .boss-move-results button { width: 100%; text-align: left; }
+.boss-builder-view .boss-moves-card { width: 100%; padding: 28px; display: grid; align-content: start; gap: 20px; }
+.boss-builder-view .boss-moves-card-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.boss-builder-view .boss-moves-card h2 { margin: 3px 0 0; }
+.boss-builder-view .boss-public-move-list { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.boss-builder-view .boss-move-badge { min-height: 104px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; padding: 16px; border: 1px solid #d4e1ca; border-radius: 12px; background: #fbfcf6; }
+.boss-builder-view .boss-move-badge.empty { color: var(--faint); border-style: dashed; }
+.boss-builder-view .boss-moves-edit-grid { display: grid; gap: 12px; }
+.boss-builder-view .boss-move-selector { position: relative; display: grid; gap: 9px; padding: 14px; border: 1px solid #d4e1ca; border-radius: 12px; background: #fbfcf6; }
+.boss-builder-view .boss-move-selector-search { position: relative; display: flex; gap: 8px; }
+.boss-builder-view .boss-move-selector-search input { min-width: 0; flex: 1; }
+.boss-builder-view .boss-move-results { left: 0; right: 0; top: calc(100% + 6px); display: grid; gap: 3px; padding: 4px; }
+.boss-builder-view .boss-move-results button { display: flex; justify-content: space-between; gap: 12px; padding: 7px 8px; }
+.boss-builder-view .boss-move-edit-meta { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.boss-builder-view .boss-move-power { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; }
+.boss-builder-view .boss-move-power input { width: 88px; }
 
 /* Battle landing state */
 .battle-gate-card {
@@ -1336,6 +1363,7 @@ tbody tr:nth-child(even) { background:rgba(233,243,226,.5); }
   .home-party { grid-template-columns: repeat(3,1fr); }
   .boss-builder-view .boss-panel { grid-template-columns: 1fr; }
   .boss-builder-view .boss-section:last-of-type { grid-column: auto; }
+  .boss-builder-view .boss-public-showcase { grid-template-columns: 1fr; }
 }
 @media(max-width:560px) {
   .app-layout.app-shell { padding: 10px 8px 28px; }
@@ -1349,6 +1377,11 @@ tbody tr:nth-child(even) { background:rgba(233,243,226,.5); }
   .home-party-slot { min-height: 104px; }
   .boss-builder-view .boss-panel { padding: 13px !important; }
   .boss-builder-view .boss-section { padding: 13px !important; }
+  .boss-builder-view .boss-hero-card { min-height: 360px; padding: 22px 16px; }
+  .boss-builder-view .boss-hero-sprite { width: min(74vw,280px); height: min(74vw,280px); }
+  .boss-builder-view .boss-moves-card { padding: 17px; }
+  .boss-builder-view .boss-public-move-list { grid-template-columns: 1fr; }
+  .boss-builder-view .boss-moves-card-heading { align-items: flex-start; flex-direction: column; }
   .battle-gate-status { grid-template-columns: 1fr; }
 }
 
@@ -1593,7 +1626,10 @@ textarea:hover:not(:disabled) {
 
 .selector-search,
 .boss-move-selector,
-.pokemon-search {
+.pokemon-search,
+.quick-search,
+.boss-move-selector-search,
+[data-search-dropdown] {
   position: relative;
 }
 
@@ -1601,10 +1637,48 @@ textarea:hover:not(:disabled) {
 .selector-results,
 .boss-move-results,
 .search-results {
-  z-index: 1000;
+  position: absolute;
+  z-index: 9999;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 260px;
+  margin-top: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   border-radius: var(--radius-sm) !important;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+}
+
+.selector-search > .selector-results {
+  top: 58px;
+}
+
+.selector-search:focus-within,
+.pokemon-search:focus-within,
+.quick-search:focus-within,
+.boss-move-selector:focus-within,
+[data-search-dropdown]:focus-within {
+  z-index: 10000;
+}
+
+.inline-results button.dropdown-option-active,
+.selector-results button.dropdown-option-active,
+.boss-move-results button.dropdown-option-active,
+.search-results button.dropdown-option-active {
+  background: var(--surface-2);
+  color: var(--cyan);
+  outline: 2px solid var(--cyan);
+  outline-offset: -2px;
+}
+
+.boss-panel,
+.boss-section,
+.editor-card,
+.move-fieldset,
+.quick-card {
+  overflow: visible;
 }
 
 .spread-table {
@@ -1716,6 +1790,30 @@ input[type="range"]:disabled::-moz-range-thumb {
   min-width: 0;
 }
 
+.battle-control-status {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(207, 139, 54, .38);
+  border-radius: 7px;
+  background: rgba(207, 139, 54, .1);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.battle-control-status .button {
+  width: auto;
+  min-height: 30px;
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
 .move-btn strong,
 .party-member-btn strong,
 .inline-results button,
@@ -1774,6 +1872,8 @@ input[type="range"]:disabled::-moz-range-thumb {
   gap: 16px;
 }
 .quick-card {
+  position: relative;
+  z-index: 1;
   min-width: 0;
   padding: 18px;
   border: 1px solid rgba(92,132,101,.42);
@@ -1809,6 +1909,49 @@ input[type="range"]:disabled::-moz-range-thumb {
   letter-spacing: .04em;
   text-transform: uppercase;
 }
+.quick-boss-card {
+  display: flex;
+}
+.quick-boss-showcase {
+  display: flex;
+  width: 100%;
+  min-height: clamp(340px, 34vw, 420px);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+}
+.quick-boss-sprite-large,
+.quick-boss-sprite-placeholder {
+  width: clamp(180px, 22vw, 280px);
+  height: clamp(180px, 22vw, 280px);
+  object-fit: contain;
+  image-rendering: auto;
+}
+.quick-boss-sprite-large {
+  filter: drop-shadow(0 18px 28px rgba(37,74,52,.22));
+}
+.quick-boss-sprite-placeholder {
+  display: grid;
+  place-items: center;
+  border: 1px dashed #abc7a7;
+  border-radius: 50%;
+  color: #52716a;
+  font-size: 64px;
+  font-weight: 900;
+}
+.quick-boss-name {
+  margin: 0;
+  color: #31544f;
+  font-size: clamp(20px, 2vw, 28px);
+  font-weight: 900;
+}
+.quick-boss-selector-wrap {
+  width: min(520px, 100%);
+  margin: 0;
+  text-align: left;
+}
 .quick-search {
   position: relative;
   min-width: 0;
@@ -1816,9 +1959,11 @@ input[type="range"]:disabled::-moz-range-thumb {
 }
 .quick-search .inline-results,
 .quick-card > .inline-results {
-  position: relative;
-  z-index: 8;
+  position: absolute;
+  z-index: 9999;
 }
+.quick-field-search { margin-bottom: 0; }
+.quick-card:focus-within { z-index: 100; }
 .quick-fields {
   display: grid;
   gap: 9px;
@@ -2203,6 +2348,15 @@ input[type="range"]:disabled::-moz-range-thumb {
   .quick-card-title img {
     width: 58px;
     height: 52px;
+  }
+  .quick-boss-showcase {
+    min-height: 0;
+    gap: 12px;
+  }
+  .quick-boss-sprite-large,
+  .quick-boss-sprite-placeholder {
+    width: clamp(150px, 52vw, 210px);
+    height: clamp(150px, 52vw, 210px);
   }
   .quick-guard-add,
   .quick-guard-chain li {

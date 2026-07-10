@@ -10,6 +10,7 @@ import { NATURES, natureDropdownLabel } from "../data/natures.js";
 import { calculatePokemonStats, STAT_KEYS } from "../core/stats.js";
 import { copyText, displayName, fallbackSprite, spriteUrl, titleCase } from "../utils/format.js";
 import { ABILITY_EFFECTS } from "../data/ability-effects.js";
+import { openSearchDropdown, setupSearchDropdownController } from "./search-dropdown.js";
 
 const TERA_TYPES = [
   "normal", "fire", "water", "electric", "grass", "ice", "fighting", "poison", "ground",
@@ -83,6 +84,7 @@ export class TeamBuilder {
     this.searchTimer = null;
     this.globalMoves = null;
     this.globalItems = null;
+    setupSearchDropdownController(this.root);
     this.persistence?.addEventListener("status", (event) => this.updatePersistenceStatus(event.detail));
     this.render();
     if (!this.state.team.some((slot) => slot.pokemon)) {
@@ -102,7 +104,6 @@ export class TeamBuilder {
                 <button type="button" data-save-setup-only>Save Setup Only</button>
                 <button type="button" data-save-full-battle>Save Full Battle State</button>
                 <button type="button" data-reset-battle-only>Reset Battle Only</button>
-                <button type="button" data-export-setup>Export Setup</button>
                 <button type="button" data-import-setup>Import Setup</button>
                 <button type="button" class="danger-text" data-clear-all-saved>Clear All Saved Data</button>
               </div>
@@ -236,7 +237,7 @@ export class TeamBuilder {
   }
 
   searchMarkup() {
-    return `<div class="pokemon-search"><label><span class="sr-only">Search Pokémon</span><input data-pokemon-search placeholder="Search any Pokémon…" autocomplete="off"></label><div class="inline-results search-results"><p>Start typing to search.</p></div></div>`;
+    return `<div class="pokemon-search"><label><span class="sr-only">Search Pokémon</span><input data-pokemon-search placeholder="Search any Pokémon…" autocomplete="off" aria-expanded="false"></label><div class="inline-results search-results hidden"><p>Start typing to search.</p></div></div>`;
   }
 
   statsMarkup(build) {
@@ -411,6 +412,7 @@ export class TeamBuilder {
       const index = Number(input.dataset.moveSearch);
       const show = () => this.showMoveResults(input, build, index);
       input.addEventListener("focus", show);
+      input.addEventListener("click", show);
       input.addEventListener("input", show);
       input.closest(".selector-search").addEventListener("focusout", () => setTimeout(() => {
         const container = input.closest(".selector-search");
@@ -424,8 +426,7 @@ export class TeamBuilder {
 
   async showMoveResults(input, build, index) {
     const results = input.closest(".selector-search").querySelector(".selector-results");
-    results.classList.remove("hidden");
-    input.setAttribute("aria-expanded", "true");
+    openSearchDropdown(input, results);
     results.innerHTML = "<p>Loading moves…</p>";
     const smeargleMode = isSmeargle(build.pokemon);
     const learnset = [...new Set(build.pokemon.moves.map(({ move }) => move.name))].sort();
@@ -463,6 +464,7 @@ export class TeamBuilder {
     if (!input) return;
     const show = () => this.showItemResults(input, build);
     input.addEventListener("focus", show);
+    input.addEventListener("click", show);
     input.addEventListener("input", show);
     input.closest(".selector-search").addEventListener("focusout", () => setTimeout(() => {
       const container = input.closest(".selector-search");
@@ -475,8 +477,7 @@ export class TeamBuilder {
 
   async showItemResults(input, build) {
     const results = input.closest(".selector-search").querySelector(".selector-results");
-    results.classList.remove("hidden");
-    input.setAttribute("aria-expanded", "true");
+    openSearchDropdown(input, results);
     results.innerHTML = "<p>Loading held items…</p>";
     const items = await this.ensureGlobalItems();
     const query = input.value.trim().toLowerCase().replaceAll(" ", "-");
@@ -515,24 +516,32 @@ export class TeamBuilder {
   }
 
   bindSearch() {
-    this.root.querySelectorAll("[data-pokemon-search]").forEach((input) => input.addEventListener("input", () => {
-      clearTimeout(this.searchTimer);
-      const results = input.closest(".pokemon-search").querySelector(".search-results");
-      if (input.value.trim().length < 2) {
-        results.innerHTML = "<p>Type at least two characters.</p>";
-        return;
-      }
-      results.innerHTML = "<p>Scanning Pokédex…</p>";
-      this.searchTimer = setTimeout(async () => {
-        try {
-          const matches = await searchPokemon(input.value);
-          results.innerHTML = matches.map(({ name }) => `<button type="button" data-pokemon="${name}">${displayName(name)}</button>`).join("") || "<p>No Pokémon found.</p>";
-          results.querySelectorAll("[data-pokemon]").forEach((button) => button.addEventListener("click", () => this.loadPokemon(this.state.activeEditor, button.dataset.pokemon)));
-        } catch {
-          results.innerHTML = "<p>Search unavailable. Check your connection.</p>";
+    this.root.querySelectorAll("[data-pokemon-search]").forEach((input) => {
+      const show = () => {
+        clearTimeout(this.searchTimer);
+        const results = input.closest(".pokemon-search").querySelector(".search-results");
+        openSearchDropdown(input, results);
+        if (input.value.trim().length < 2) {
+          results.innerHTML = "<p>Type at least two characters.</p>";
+          return;
         }
-      }, 220);
-    }));
+        results.innerHTML = "<p>Scanning Pokédex…</p>";
+        const query = input.value;
+        this.searchTimer = setTimeout(async () => {
+          try {
+            const matches = await searchPokemon(query);
+            if (!input.isConnected || input.value !== query) return;
+            results.innerHTML = matches.map(({ name }) => `<button type="button" data-pokemon="${name}">${displayName(name)}</button>`).join("") || "<p>No Pokémon found.</p>";
+            results.querySelectorAll("[data-pokemon]").forEach((button) => button.addEventListener("click", () => this.loadPokemon(this.state.activeEditor, button.dataset.pokemon)));
+          } catch {
+            if (input.isConnected) results.innerHTML = "<p>Search unavailable. Check your connection.</p>";
+          }
+        }, 120);
+      };
+      input.addEventListener("focus", show);
+      input.addEventListener("click", show);
+      input.addEventListener("input", show);
+    });
   }
 
   async loadPokemon(index, name, defaultMoves = []) {

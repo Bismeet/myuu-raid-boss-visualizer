@@ -2,10 +2,10 @@ import { BattleState } from "./core/battle-state.js";
 import { Simulator } from "./core/simulator.js";
 import { BossPanel } from "./ui/boss-panel.js";
 import { TeamBuilder } from "./ui/team-builder.js";
-import { BattleScene } from "./ui/battle-scene.js?v=2";
+import { BattleScene } from "./ui/battle-scene.js?v=3";
 import { Summary } from "./ui/summary.js";
 import { HomeView } from "./ui/home.js";
-import { QuickCalc } from "./ui/quick-calc.js?v=8";
+import { QuickCalc } from "./ui/quick-calc.js?v=9";
 import { SetupPersistence } from "./utils/persistence.js";
 import { displayName } from "./utils/format.js";
 
@@ -24,6 +24,14 @@ const battleScene = new BattleScene(document.querySelector("#battle-scene"), sta
 const summary = new Summary(document.querySelector("#summary"), state);
 const homeView = new HomeView(document.querySelector("#home-page"), state, navigate);
 const quickCalc = new QuickCalc(document.querySelector("#quick-calc"), state);
+
+function safeRender(name, renderFn) {
+  try {
+    renderFn();
+  } catch (error) {
+    console.error(`${name} render failed`, error);
+  }
+}
 
 function navigate(view, { replace = false } = {}) {
   const nextView = VIEWS.has(view) ? view : "home";
@@ -109,9 +117,11 @@ function renderBattleGate() {
       state.appView = "battle";
       renderAll();
     } catch (error) {
-      state.isResolvingTurn = false;
-      event.currentTarget.disabled = false;
       gate.querySelector(".battle-gate-message").textContent = error.message;
+    } finally {
+      state.isResolvingTurn = false;
+      if (!state.battleActive) event.currentTarget.disabled = false;
+      if (state.battleActive) safeRender("Battle", () => battleScene.render());
     }
   });
 }
@@ -119,59 +129,37 @@ function renderBattleGate() {
 function renderAll() {
   updateAppView();
   const currentView = VIEWS.has(state.appView) ? state.appView : "home";
-  if (currentView === "home") homeView.render();
-  if (currentView === "team-builder") teamBuilder.render();
-  if (currentView === "boss-builder") bossPanel.render();
+  if (currentView === "home") safeRender("Home", () => homeView.render());
+  if (currentView === "team-builder") safeRender("Team Builder", () => teamBuilder.render());
+  if (currentView === "boss-builder") safeRender("Boss Builder", () => bossPanel.render());
   if (currentView === "battle") {
-    battleScene.render();
-    summary.render();
-    renderBattleGate();
+    safeRender("Battle", () => battleScene.render());
+    safeRender("Battle summary", () => summary.render());
+    safeRender("Battle gate", renderBattleGate);
   }
-  if (currentView === "quick-calc") quickCalc.render();
+  if (currentView === "quick-calc") safeRender("Quick Calc", () => quickCalc.render());
 }
 
-state.addEventListener("team", () => {
-  updateAppView();
-  if (state.appView === "team-builder") teamBuilder.render();
-  if (state.appView === "home") homeView.render();
-  if (state.appView === "quick-calc") quickCalc.render();
-  if (state.appView === "battle") battleScene.render();
-  if (state.appView === "battle") renderBattleGate();
-});
+let stateRenderQueued = false;
+function scheduleStateRender() {
+  if (stateRenderQueued) return;
+  stateRenderQueued = true;
+  queueMicrotask(() => {
+    stateRenderQueued = false;
+    renderAll();
+  });
+}
 
-state.addEventListener("boss", () => {
-  updateAppView();
-  if (state.appView === "boss-builder") bossPanel.render();
-  if (state.appView === "home") homeView.render();
-  if (state.appView === "quick-calc") quickCalc.render();
-  if (state.appView === "battle") battleScene.render();
-  if (state.appView === "battle") renderBattleGate();
-});
-
-state.addEventListener("simulation", () => {
-  updateAppView();
-  if (state.appView === "boss-builder") bossPanel.render();
-  if (state.appView === "battle") {
-    battleScene.render();
-    summary.render();
-    renderBattleGate();
-  }
-  if (state.appView === "home") homeView.render();
-  if (state.appView === "quick-calc") quickCalc.render();
-});
+state.addEventListener("team", scheduleStateRender);
+state.addEventListener("boss", scheduleStateRender);
+state.addEventListener("simulation", scheduleStateRender);
 
 state.addEventListener("damage-input", () => {
   if (state.results.length) {
     const limit = state.cursor || state.results.length;
     state.results = simulator.run(limit);
   }
-  updateAppView();
-  if (state.appView === "boss-builder") bossPanel.render();
-  if (state.appView === "battle") battleScene.render();
-  if (state.appView === "battle") summary.render();
-  if (state.appView === "home") homeView.render();
-  if (state.appView === "quick-calc") quickCalc.render();
-  if (state.appView === "battle") renderBattleGate();
+  if (state.appView !== "team-builder" && state.appView !== "boss-builder") scheduleStateRender();
 });
 
 state.addEventListener("restore", renderAll);
