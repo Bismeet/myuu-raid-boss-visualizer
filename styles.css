@@ -2376,3 +2376,40 @@ input[type="range"]:disabled::-moz-range-thumb {
     min-height: 44px;
   }
 }
+
+/* Shared app footer */
+.site-credit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  margin: 20px auto 4px;
+  padding: 10px 16px;
+  border: 1px solid rgba(92, 132, 101, .28);
+  border-radius: 999px;
+  background: rgba(255, 253, 242, .8);
+  box-shadow: 0 8px 18px rgba(39, 79, 67, .1);
+  color: #476a61;
+  font-size: .82rem;
+  letter-spacing: .015em;
+  text-align: center;
+}
+.site-credit strong {
+  color: #1d504b;
+  font-weight: 800;
+}
+.site-credit-separator {
+  color: #c19b48;
+}
+@media(max-width:560px) {
+  .site-credit {
+    flex-direction: column;
+    gap: 3px;
+    padding: 11px 20px;
+    font-size: .8rem;
+    border-radius: 16px;
+  }
+  .site-credit-separator { display: none; }
+}
