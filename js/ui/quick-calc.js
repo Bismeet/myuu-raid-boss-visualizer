@@ -53,7 +53,7 @@ export function resolveQuickCalcBossTypes({
 }
 const CUSTOM_GUARD_SPLITTER = "custom";
 const GUARD_SPLITTER_KEYS = [...Object.keys(QUICK_CALC_GUARD_SPLIT_USERS), CUSTOM_GUARD_SPLITTER];
-const PRESETS = {
+export const QUICK_CALC_PRESETS = {
   basculegion: {
     label: "Basculegion Last Respects",
     boss: "cobalion",
@@ -71,7 +71,7 @@ const PRESETS = {
   },
   heracross: {
     label: "Mega Heracross Pin Missile",
-    attacker: "heracross",
+    attacker: "heracross-mega",
     move: "pin-missile",
     nature: "adamant",
     ability: "skill-link",
@@ -661,7 +661,7 @@ export class QuickCalc {
           <div class="quick-calc-actions">
             <select data-preset aria-label="Apply preset">
               <option value="">Preset</option>
-              ${Object.entries(PRESETS).map(([key, preset]) => `<option value="${key}">${escapeHtml(preset.label)}</option>`).join("")}
+              ${Object.entries(QUICK_CALC_PRESETS).map(([key, preset]) => `<option value="${key}">${escapeHtml(preset.label)}</option>`).join("")}
             </select>
             <button type="button" class="button" data-save-calc>Save Quick Calc</button>
             <button type="button" class="button" data-reset-calc>Reset Quick Calc</button>
@@ -1250,7 +1250,7 @@ export class QuickCalc {
   }
 
   async applyPreset(key, rerender = true, existingSequence = null) {
-    const preset = PRESETS[key];
+    const preset = QUICK_CALC_PRESETS[key];
     if (!preset) return;
     const sequence = existingSequence ?? ++this.sequence;
     if (preset.boss) await this.loadBossForSequence(preset.boss, false, sequence);
