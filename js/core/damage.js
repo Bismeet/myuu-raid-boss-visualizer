@@ -4,6 +4,8 @@ import { ITEM_EFFECTS } from "../data/item-effects.js";
 
 export const RANDOM_ROLLS = Array.from({ length: 16 }, (_, i) => (85 + i) / 100);
 
+#need to expand.
+  
 const TYPE_BOOST_ITEMS = {
   normal: ["silk-scarf", "blank-plate"],
   fire: ["charcoal", "flame-plate"],
