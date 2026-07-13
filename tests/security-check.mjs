@@ -47,6 +47,8 @@ if (!/^\.env\s*$/m.test(gitignore) || !/^\.env\.\*\s*$/m.test(gitignore) || !/^!
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
+const originalConsoleError = console.error;
+const serverErrorLogs = [];
 const stats = [
   ["hp", 80], ["attack", 90], ["defense", 85],
   ["special-attack", 95], ["special-defense", 90], ["speed", 100],
@@ -70,6 +72,7 @@ function responseRecorder() {
 }
 
 try {
+  console.error = (...args) => serverErrorLogs.push(args);
   delete process.env.BOSS_DEF_MULTIPLIER;
   delete process.env.BOSS_SPD_MULTIPLIER;
   delete process.env.BOSS_LEVEL;
@@ -81,6 +84,13 @@ try {
   await quickCalcHandler({ method: "POST", body: { boss: "mew", attacker: "mew", move: "tackle" } }, unavailable);
   if (unavailable.statusCode !== 503 || unavailable.payload?.error !== "Server calculation unavailable") {
     throw new Error("Missing server configuration did not fail safely.");
+  }
+  if (!serverErrorLogs.some(([message, details]) => (
+    message === "[quick-calc api] request failed"
+    && details?.code === "SERVER_CONFIG_UNAVAILABLE"
+    && details?.configKey === "BOSS_LEVEL"
+  ))) {
+    throw new Error("Missing server configuration was not logged safely.");
   }
 
   Object.assign(process.env, {
@@ -115,6 +125,7 @@ try {
     throw new Error(`Server response exposed unexpected fields: ${Object.keys(success.payload).join(", ")}`);
   }
 } finally {
+  console.error = originalConsoleError;
   globalThis.fetch = originalFetch;
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, originalEnv);

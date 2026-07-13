@@ -17,8 +17,22 @@ const titleCase = (value = "") => String(value)
 
 function secretNumber(name) {
   const value = Number(process.env[name]);
-  if (!Number.isFinite(value) || value <= 0) throw new Error("SERVER_CONFIG_UNAVAILABLE");
+  if (!Number.isFinite(value) || value <= 0) {
+    const error = new Error("SERVER_CONFIG_UNAVAILABLE");
+    error.configKey = name;
+    throw error;
+  }
   return value;
+}
+
+function safeErrorDetails(error) {
+  const message = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+  if (message === "SERVER_CONFIG_UNAVAILABLE") {
+    return { code: message, configKey: error.configKey || "UNKNOWN_SERVER_VARIABLE" };
+  }
+  if (/^INVALID_[A-Z_]+$/.test(message)) return { code: message };
+  if (message === "PUBLIC_DATA_UNAVAILABLE") return { code: message };
+  return { code: "CALCULATION_FAILED" };
 }
 
 function slug(value, field) {
@@ -173,6 +187,7 @@ export default async function handler(request, response) {
     });
   } catch (error) {
     const unavailable = error?.message === "SERVER_CONFIG_UNAVAILABLE";
+    console.error("[quick-calc api] request failed", safeErrorDetails(error));
     return response.status(unavailable ? 503 : 400).json({
       error: unavailable ? "Server calculation unavailable" : "Unable to calculate damage",
     });

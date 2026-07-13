@@ -32,3 +32,5 @@ npm-debug.log*
 
 # Gemini agent artifacts (not part of the app)
 .agents/
+
+.vercel/
