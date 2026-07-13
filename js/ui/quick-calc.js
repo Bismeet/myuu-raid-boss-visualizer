@@ -428,10 +428,19 @@ export class QuickCalc {
       });
       const data = await response.json().catch(() => ({}));
       if (requestId !== this.requestSequence) return;
-      if (!response.ok || typeof data.summary !== "string" || typeof data.damageRange !== "string") {
+      if (
+        !response.ok
+        || typeof data.summary !== "string"
+        || typeof data.actualDamageRange !== "string"
+        || typeof data.myuuDamageRange !== "string"
+      ) {
         throw new Error(data.error || "Server calculation unavailable");
       }
-      this.serverResult = { summary: data.summary, damageRange: data.damageRange };
+      this.serverResult = {
+        summary: data.summary,
+        actualDamageRange: data.actualDamageRange,
+        myuuDamageRange: data.myuuDamageRange,
+      };
     } catch {
       if (requestId !== this.requestSequence) return;
       this.serverResult = null;
@@ -452,7 +461,7 @@ export class QuickCalc {
   resultText() {
     const calc = this.viewModel();
     if (!this.serverResult) return this.serverError || "Server calculation unavailable";
-    return `${this.resultSummary(calc)}\nDamage: ${this.serverResult.damageRange}`;
+    return `${this.resultSummary(calc)}\nActual Damage: ${this.serverResult.actualDamageRange}\nMyuu Rounded Damage: ${this.serverResult.myuuDamageRange}`;
   }
 
   render() {
@@ -656,7 +665,10 @@ export class QuickCalc {
     const resultContent = this.calculationPending
       ? `<div class="quick-simple-results"><div><span>Status</span><strong>Calculating securely...</strong></div></div>`
       : this.serverResult
-        ? `<div class="quick-simple-results"><div><span>Damage</span><strong>${escapeHtml(this.serverResult.damageRange)}</strong></div></div>`
+        ? `<div class="quick-simple-results">
+            <div><span>Actual Damage</span><strong>${escapeHtml(this.serverResult.actualDamageRange)}</strong></div>
+            <div class="myuu-range"><span>Myuu Rounded Damage</span><strong>${escapeHtml(this.serverResult.myuuDamageRange)}</strong></div>
+          </div>`
         : `<div class="quick-simple-results"><div><span>Status</span><strong>${escapeHtml(this.serverError || "Server calculation unavailable")}</strong></div></div>`;
     return `
       <section class="quick-card quick-wide" data-quick-results aria-labelledby="quick-result-title">

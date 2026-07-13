@@ -178,12 +178,15 @@ export default async function handler(request, response) {
       teraType: attacker.teraType,
     });
     const hits = clamp(input.hitCount, 1, 5);
-    const displayedMin = Math.floor(result.min * hits) % damageCap;
-    const displayedMax = Math.floor(result.max * hits) % damageCap;
+    const actualMin = Math.floor(result.min * hits);
+    const actualMax = Math.floor(result.max * hits);
+    const displayedMin = actualMin % damageCap;
+    const displayedMax = actualMax % damageCap;
 
     return response.status(200).json({
       summary: `${titleCase(attackerName)} using ${titleCase(moveName)} vs ${titleCase(bossName)}`,
-      damageRange: `${displayedMin.toLocaleString("en-US")} - ${displayedMax.toLocaleString("en-US")}`,
+      actualDamageRange: `${actualMin.toLocaleString("en-US")} - ${actualMax.toLocaleString("en-US")}`,
+      myuuDamageRange: `${displayedMin.toLocaleString("en-US")} - ${displayedMax.toLocaleString("en-US")}`,
     });
   } catch (error) {
     const unavailable = error?.message === "SERVER_CONFIG_UNAVAILABLE";

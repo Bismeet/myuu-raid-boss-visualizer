@@ -5,7 +5,7 @@ import { TeamBuilder } from "./ui/team-builder.js";
 import { BattleScene } from "./ui/battle-scene.js?v=3";
 import { Summary } from "./ui/summary.js";
 import { HomeView } from "./ui/home.js";
-import { QuickCalc } from "./ui/quick-calc.js?v=11";
+import { QuickCalc } from "./ui/quick-calc.js?v=12";
 import { SetupPersistence } from "./utils/persistence.js";
 import { displayName } from "./utils/format.js";
 

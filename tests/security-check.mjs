@@ -121,8 +121,12 @@ try {
     },
   }, success);
   if (success.statusCode !== 200) throw new Error("Configured server calculation failed.");
-  if (Object.keys(success.payload).sort().join(",") !== "damageRange,summary") {
+  if (Object.keys(success.payload).sort().join(",") !== "actualDamageRange,myuuDamageRange,summary") {
     throw new Error(`Server response exposed unexpected fields: ${Object.keys(success.payload).join(", ")}`);
+  }
+  const rangeMinimum = (range) => Number(String(range).split("-")[0].replaceAll(",", "").trim());
+  if (rangeMinimum(success.payload.actualDamageRange) < rangeMinimum(success.payload.myuuDamageRange)) {
+    throw new Error("Myuu damage exceeds the actual server-calculated damage.");
   }
 
   const splitSuccess = responseRecorder();
@@ -142,11 +146,10 @@ try {
       splitterStats: { custom: { def: 1, spd: 1 } },
     },
   }, splitSuccess);
-  const rangeMinimum = (range) => Number(String(range).split("-")[0].replaceAll(",", "").trim());
-  if (splitSuccess.statusCode !== 200 || rangeMinimum(splitSuccess.payload?.damageRange) <= rangeMinimum(success.payload.damageRange)) {
+  if (splitSuccess.statusCode !== 200 || rangeMinimum(splitSuccess.payload?.actualDamageRange) <= rangeMinimum(success.payload.actualDamageRange)) {
     throw new Error("Server Guard Split inputs did not affect the damage result.");
   }
-  if (Object.keys(splitSuccess.payload).sort().join(",") !== "damageRange,summary") {
+  if (Object.keys(splitSuccess.payload).sort().join(",") !== "actualDamageRange,myuuDamageRange,summary") {
     throw new Error("Guard Split response exposed server calculation internals.");
   }
 } finally {
