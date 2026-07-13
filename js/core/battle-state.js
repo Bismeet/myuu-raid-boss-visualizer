@@ -300,11 +300,11 @@ export class BattleState extends EventTarget {
     };
     this.bossCurrentStats = { ...this.bossOriginalStats };
     this.bossStatSources = {
-      atk: [this.manualBossOverride ? "Manual override" : "Raid scaler"],
-      def: [this.manualBossOverride ? "Manual override" : "Raid scaler"],
-      spa: [this.manualBossOverride ? "Manual override" : "Raid scaler"],
-      spd: [this.manualBossOverride ? "Manual override" : "Raid scaler"],
-      spe: [this.manualBossOverride ? "Manual override" : "Raid scaler"],
+      atk: [this.manualBossOverride ? "Manual override" : "Public fallback"],
+      def: [this.manualBossOverride ? "Manual override" : "Public fallback"],
+      spa: [this.manualBossOverride ? "Manual override" : "Public fallback"],
+      spd: [this.manualBossOverride ? "Manual override" : "Public fallback"],
+      spe: [this.manualBossOverride ? "Manual override" : "Public fallback"],
     };
     this.bossSpeedOverride = null;
 
@@ -696,24 +696,6 @@ export class BattleState extends EventTarget {
       }
     }
 
-    const firstMover = playerGoesFirst ? playerBattler.name : bossBattler.name;
-    console.table({
-      turn: this.currentTurn,
-      player: playerBattler.name,
-      playerMove: playerActionObj.move?.name || "none",
-      playerMovePriority: playerActionObj.move?.priority ?? 0,
-      playerItemPriority: playerItemPriorityBonus,
-      playerFinalPriority,
-      playerEffectiveSpeed: playerSpeed,
-      boss: bossBattler.name,
-      bossMove: bossActionObj.move?.name || "none",
-      bossMovePriority: bossActionObj.move?.priority ?? 0,
-      bossItemPriority: bossItemPriorityBonus,
-      bossFinalPriority,
-      bossEffectiveSpeed: bossSpeed,
-      firstMover
-    });
-
     turnLog.playerMovedFirst = playerGoesFirst;
     let notesCountBefore = 0;
 
@@ -968,7 +950,7 @@ export class BattleState extends EventTarget {
             const attackerAbility = getEffectiveAbility({ isBoss: true }, this);
             const defenderAbility = getEffectiveAbility({ slotIndex: this.activeSlot, isBoss: false }, this);
             const payload = {
-              attacker: { stats: this.bossCurrentStats, level: 200, item: "", ability: attackerAbility },
+              attacker: { stats: this.bossCurrentStats, level: 100, item: "", ability: attackerAbility },
               boss: { stats: currentActive.currentStats, maxHp: currentActive.stats.hp },
               move: step.move,
               attackerTypes: this.bossCurrentTypes,
@@ -1043,7 +1025,7 @@ export class BattleState extends EventTarget {
                rollMode: this.damageRollMode || "random",
                minDamage: normal.min,
                maxDamage: normal.max,
-               level: 200,
+               level: 100,
                originalPower: normal.basePower || 50,
                usedPower: normal.usedPower,
                attackStat: normal.attackStat,

@@ -1,15 +1,11 @@
 import { getItemIndex, getMove, getMoveIndex, getPokemon, searchPokemon } from "../api/pokeapi.js";
 import { BOSSES, searchBosses } from "../data/bosses.js";
 import { NATURES, natureDropdownLabel } from "../data/natures.js";
-import { damageRolls } from "../core/damage.js";
-import { applyStage, emptyStages, stageMultiplier } from "../core/stages.js";
-import { baseStats, calculatePokemonStats } from "../core/stats.js";
-import { copyText, displayName, fallbackSprite, spriteUrl, titleCase } from "../utils/format.js";
+import { applyStage, emptyStages } from "../core/stages.js";
+import { calculatePokemonStats } from "../core/stats.js";
+import { displayName, fallbackSprite, spriteUrl, titleCase } from "../utils/format.js";
 import { openSearchDropdown, setupSearchDropdownController } from "./search-dropdown.js";
 
-const STORAGE_KEY = "myuu-raid-quick-calc-state";
-const LEGACY_STORAGE_KEY = "myuu.quickCalc.saved";
-export const MYUU_DAMAGE_CAP = 65535;
 const TYPES = [
   "normal", "fire", "water", "electric", "grass", "ice", "fighting", "poison", "ground",
   "flying", "psychic", "bug", "rock", "ghost", "dragon", "dark", "steel", "fairy",
@@ -21,22 +17,8 @@ const CURATED_ITEMS = [
 ];
 const RAID_MOVES = [
   "last-respects", "pin-missile", "icicle-spear", "screech", "metal-sound", "fake-tears",
-  "guard-split", "stored-power", "power-trip", "rage-fist", "collision-course", "astral-barrage",
+  "stored-power", "power-trip", "rage-fist", "collision-course", "astral-barrage",
 ];
-export const QUICK_CALC_GUARD_SPLIT_USERS = {
-  abra: { name: "Abra", def: 5, spd: 5 },
-  elgyem: { name: "Elgyem", def: 6, spd: 6 },
-  shuckle: { name: "Shuckle", def: 20, spd: 20 },
-  shieldon: { name: "Shieldon", def: 7, spd: 7 },
-  carbink: { name: "Carbink", def: 7, spd: 7 },
-};
-
-export function defaultQuickCalcSplitterStats() {
-  return Object.fromEntries(Object.entries(QUICK_CALC_GUARD_SPLIT_USERS).map(([key, splitter]) => [
-    key,
-    { def: splitter.def, spd: splitter.spd },
-  ]));
-}
 
 export function resolveQuickCalcBossTypes({
   bossTypes = [],
@@ -58,8 +40,6 @@ export function resolveQuickCalcBossTypes({
   if (forestsCurse && !types.includes("grass")) types = [...types, "grass"];
   return types;
 }
-const CUSTOM_GUARD_SPLITTER = "custom";
-const GUARD_SPLITTER_KEYS = [...Object.keys(QUICK_CALC_GUARD_SPLIT_USERS), CUSTOM_GUARD_SPLITTER];
 export const QUICK_CALC_PRESETS = {
   basculegion: {
     label: "Basculegion Last Respects",
@@ -108,9 +88,6 @@ export const QUICK_CALC_PRESETS = {
     spaEv: 252,
     spaStage: 6,
   },
-  shuckle: { label: "Shuckle Guard Split", guardSplitOrder: ["shuckle"] },
-  elgyem: { label: "Elgyem Guard Split", guardSplitOrder: ["elgyem"] },
-  shieldon: { label: "Shieldon Screech", guardSplitOrder: ["shieldon"], screechCount: 3 },
 };
 
 const escapeHtml = (value = "") => String(value)
@@ -121,26 +98,8 @@ const escapeHtml = (value = "") => String(value)
 const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 0));
 const slug = (value = "") => value.toLowerCase().trim().replaceAll(" ", "-");
 const fmt = (value) => Math.round(Number(value) || 0).toLocaleString();
-const percent = (value) => `${(Number(value) || 0).toFixed(2)}%`;
-const effectivenessLabel = (value) => `${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}x`;
 const prepareMove = (move) => move ? { ...move, basePower: move.power ?? null, customPower: move.power ?? null } : null;
 const blankSpread = (value) => ({ hp: value, atk: value, def: value, spa: value, spd: value, spe: value });
-const STANDARD_ROLL_MIN = 85;
-const STANDARD_ROLL_MAX = 100;
-const MYUU_TEST_ROLL_MIN = 70;
-const MYUU_TEST_ROLL_MAX = 80;
-
-export function getMyuuDisplayedDamage(rawDamage) {
-  const damage = Math.floor(Number(rawDamage) || 0);
-  return damage % MYUU_DAMAGE_CAP;
-}
-
-export function getMyuuDisplayedDamageRange(rawMin, rawMax) {
-  return {
-    min: getMyuuDisplayedDamage(rawMin),
-    max: getMyuuDisplayedDamage(rawMax),
-  };
-}
 
 function debounce(fn, delay) {
   let timer = null;
@@ -148,79 +107,6 @@ function debounce(fn, delay) {
     clearTimeout(timer);
     timer = setTimeout(() => fn(...args), delay);
   };
-}
-
-function generateRollMultipliers(minPercent, maxPercent) {
-  const min = clamp(minPercent, 1, 100);
-  const max = clamp(maxPercent, 1, 100);
-  const start = Math.min(min, max);
-  const end = Math.max(min, max);
-  return Array.from({ length: Math.floor(end - start) + 1 }, (_, index) => (Math.floor(start) + index) / 100);
-}
-
-function normalBossDefense(base) {
-  return Math.floor(((2 * base + 31) * 200) / 100) + 5;
-}
-
-function bossHpFromBase(baseHp) {
-  return Math.max(1, (Number(baseHp) || 1) * 10000);
-}
-
-function average(values) {
-  return values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0;
-}
-
-export function normalizeGuardSplitOrder(order) {
-  if (!Array.isArray(order)) return [];
-  return order.filter((key) => GUARD_SPLITTER_KEYS.includes(key));
-}
-
-function normalizeSplitterStat(value, fallback) {
-  if (value === "" || value === null || value === undefined) return fallback;
-  const numericValue = Number(value);
-  if (!Number.isFinite(numericValue)) return fallback;
-  return clamp(Math.round(numericValue), 1, 999);
-}
-
-export function normalizeQuickCalcSplitterStats(splitterStats = {}) {
-  return Object.fromEntries(Object.entries(QUICK_CALC_GUARD_SPLIT_USERS).map(([key, defaults]) => [
-    key,
-    {
-      def: normalizeSplitterStat(splitterStats?.[key]?.def, defaults.def),
-      spd: normalizeSplitterStat(splitterStats?.[key]?.spd, defaults.spd),
-    },
-  ]));
-}
-
-export function resolveQuickCalcGuardChain(order, splitterStats = {}, customStats = {}) {
-  return normalizeGuardSplitOrder(order).map((key) => {
-    if (key === CUSTOM_GUARD_SPLITTER) {
-      return {
-        key,
-        name: "Custom",
-        def: normalizeSplitterStat(customStats.def, 1),
-        spd: normalizeSplitterStat(customStats.spd, 1),
-      };
-    }
-    const defaults = QUICK_CALC_GUARD_SPLIT_USERS[key];
-    return {
-      key,
-      name: defaults.name,
-      def: normalizeSplitterStat(splitterStats?.[key]?.def, defaults.def),
-      spd: normalizeSplitterStat(splitterStats?.[key]?.spd, defaults.spd),
-    };
-  }).filter(Boolean);
-}
-
-export function calculateQuickCalcGuardSplits(startingDef, startingSpd, splitters = []) {
-  let currentDef = Math.max(1, Number(startingDef) || 1);
-  let currentSpd = Math.max(1, Number(startingSpd) || 1);
-  const steps = splitters.map((splitter, index) => {
-    currentDef = Math.floor((currentDef + splitter.def) / 2);
-    currentSpd = Math.floor((currentSpd + splitter.spd) / 2);
-    return { index: index + 1, splitter, def: currentDef, spd: currentSpd };
-  });
-  return { finalDef: currentDef, finalSpd: currentSpd, steps };
 }
 
 function damageClass(move) {
@@ -235,6 +121,12 @@ export class QuickCalc {
   constructor(root, state) {
     this.root = root;
     this.state = state;
+    try {
+      localStorage.removeItem("myuu-raid-quick-calc-state");
+      localStorage.removeItem("myuu.quickCalc.saved");
+    } catch {
+      // Storage may be unavailable; no Quick Calc state is persisted anymore.
+    }
     this.bossQuery = "";
     this.attackerQuery = "";
     this.moveQuery = "";
@@ -246,12 +138,13 @@ export class QuickCalc {
     this.bound = false;
     this.renderTimer = null;
     this.resultsTimer = null;
-    this.saveTimer = null;
-    this.actionLocked = false;
+    this.requestSequence = 0;
+    this.serverResult = null;
+    this.serverError = "";
+    this.calculationPending = false;
     this.searchTokens = { attacker: 0, move: 0, item: 0 };
     this.cfg = this.defaultConfig();
-    this.scheduleQuickCalc = debounce(() => this.renderResultsOnly(), 120);
-    this.scheduleQuickCalcSave = debounce(() => this.saveCalc({ silent: true, rerender: false }), 400);
+    this.scheduleQuickCalc = debounce(() => this.refreshServerResult(), 180);
     setupSearchDropdownController(this.root);
     this.bind();
     this.render();
@@ -276,15 +169,6 @@ export class QuickCalc {
       atkStage: 0,
       spaStage: 0,
       critStage: 0,
-      bossDefMultiplier: 7.8,
-      bossSpdMultiplier: 7.8,
-      manualBossDef: 3150,
-      manualBossSpd: 3150,
-      useManualDefense: false,
-      guardSplitOrder: [],
-      splitterStats: defaultQuickCalcSplitterStats(),
-      customGuardDef: 300,
-      customGuardSpd: 300,
       screechCount: 0,
       defenseStage: 0,
       simpleDefense: false,
@@ -302,26 +186,13 @@ export class QuickCalc {
       customPowerEnabled: false,
       customPower: 250,
       critical: false,
-      rollMode: "all",
-      rollRangeMode: "standard",
-      customRollMin: 70,
-      customRollMax: 80,
       faintedAllies: 4,
       hitCount: 1,
-      observedDamage: "",
-      observedCrit: false,
-      observedMayBeWrapped: false,
-      reverseAssumption: "unknown",
-      reverse: null,
     };
   }
 
   async bootstrap() {
     const sequence = ++this.sequence;
-    if (await this.loadSavedCalc({ silent: true, rerender: false, sequence })) {
-      if (sequence === this.sequence) this.render();
-      return;
-    }
     if (!this.cfg.boss && this.state.boss) await this.loadBossForSequence(this.state.boss.name, false, sequence);
     if (sequence !== this.sequence) return;
     if (!this.cfg.attacker) {
@@ -351,6 +222,7 @@ export class QuickCalc {
     if (!this.cfg.move) await this.loadMoveForSequence("last-respects", false, sequence);
     if (sequence !== this.sequence) return;
     this.render();
+    this.refreshServerResult();
   }
 
   async ensureGlobalMoves() {
@@ -372,57 +244,6 @@ export class QuickCalc {
       this.globalItems = CURATED_ITEMS;
     }
     return this.globalItems;
-  }
-
-  bossBases() {
-    return this.cfg.boss ? baseStats(this.cfg.boss) : { hp: 1, atk: 1, def: 1, spa: 1, spd: 1, spe: 1 };
-  }
-
-  bossDefenseModel() {
-    const bases = this.bossBases();
-    const normalDef = normalBossDefense(bases.def);
-    const normalSpd = normalBossDefense(bases.spd);
-    const startingDef = this.cfg.useManualDefense ? Math.max(1, Number(this.cfg.manualBossDef) || 1) : Math.floor(normalDef * (Number(this.cfg.bossDefMultiplier) || 1));
-    const startingSpd = this.cfg.useManualDefense ? Math.max(1, Number(this.cfg.manualBossSpd) || 1) : Math.floor(normalSpd * (Number(this.cfg.bossSpdMultiplier) || 1));
-    const split = calculateQuickCalcGuardSplits(startingDef, startingSpd, this.guardChain());
-    const log = [
-      `Starting Boss Def/SpD: ${fmt(startingDef)} / ${fmt(startingSpd)}`,
-      ...split.steps.map(({ index, splitter, def, spd }) => `${index}. ${splitter.name} split using ${fmt(splitter.def)} / ${fmt(splitter.spd)} \u2192 ${fmt(def)} / ${fmt(spd)}`),
-    ];
-    return { normalDef, normalSpd, startingDef, startingSpd, finalDef: split.finalDef, finalSpd: split.finalSpd, log };
-  }
-
-  guardChain() {
-    return resolveQuickCalcGuardChain(this.cfg.guardSplitOrder, this.cfg.splitterStats, {
-      def: this.cfg.customGuardDef,
-      spd: this.cfg.customGuardSpd,
-    });
-  }
-
-  stageModel() {
-    const screechDrop = this.cfg.screechCount * (this.cfg.simpleDefense ? -4 : -2);
-    const defStage = clamp(Number(this.cfg.defenseStage) + screechDrop, -6, 6);
-    const spdDrop = (Number(this.cfg.metalSoundCount) + Number(this.cfg.fakeTearsCount)) * (this.cfg.simpleSpd ? -4 : -2);
-    const spdStage = clamp(Number(this.cfg.spdStage) + spdDrop, -6, 6);
-    return {
-      def: defStage,
-      spd: spdStage,
-      defDamageEquivalent: 1 / stageMultiplier(defStage),
-      spdDamageEquivalent: 1 / stageMultiplier(spdStage),
-    };
-  }
-
-  bossTypes() {
-    return resolveQuickCalcBossTypes({
-      bossTypes: this.cfg.boss?.types?.map(({ type }) => type.name) || [],
-      manualTypesEnabled: this.cfg.manualTypesEnabled,
-      manualType1: this.cfg.manualType1,
-      manualType2: this.cfg.manualType2,
-      magicPowder: this.cfg.magicPowder,
-      soak: this.cfg.soak,
-      trickOrTreat: this.cfg.trickOrTreat,
-      forestsCurse: this.cfg.forestsCurse,
-    });
   }
 
   attackerBuild() {
@@ -462,246 +283,127 @@ export class QuickCalc {
     return move;
   }
 
-  rollRangeModel() {
-    if (this.cfg.rollRangeMode === "myuu-test") {
-      return {
-        key: "myuu-test",
-        label: "Myuu Test 70%-80%",
-        min: MYUU_TEST_ROLL_MIN,
-        max: MYUU_TEST_ROLL_MAX,
-        multipliers: generateRollMultipliers(MYUU_TEST_ROLL_MIN, MYUU_TEST_ROLL_MAX),
-      };
-    }
-    if (this.cfg.rollRangeMode === "custom") {
-      const min = clamp(this.cfg.customRollMin, 1, 100);
-      const max = clamp(this.cfg.customRollMax, 1, 100);
-      const start = Math.min(min, max);
-      const end = Math.max(min, max);
-      return {
-        key: "custom",
-        label: `Custom ${fmt(start)}%-${fmt(end)}%`,
-        min: start,
-        max: end,
-        multipliers: generateRollMultipliers(start, end),
-      };
-    }
-    return {
-      key: "standard",
-      label: "Standard Pokemon 85%-100%",
-      min: STANDARD_ROLL_MIN,
-      max: STANDARD_ROLL_MAX,
-      multipliers: generateRollMultipliers(STANDARD_ROLL_MIN, STANDARD_ROLL_MAX),
-    };
+  viewModel() {
+    return { build: this.attackerBuild(), move: this.selectedMove() };
   }
 
-  applyRollRange(result, bossMaxHp) {
-    const range = this.rollRangeModel();
-    if (!result?.baseDamageBeforeModifier) return { ...result, rollRange: range };
-    const rolls = range.multipliers.map((random) => Math.floor(
-      result.baseDamageBeforeModifier
-      * result.criticalModifier
-      * random
-      * result.stab
-      * result.effectiveness
-      * result.burnModifier
-      * result.itemFinalModifier
-      * result.otherModifiers
-    ));
+  requestPayload() {
     return {
-      ...result,
-      rolls,
-      min: rolls[0] ?? 0,
-      max: rolls.at(-1) ?? 0,
-      percent: [
-        bossMaxHp ? ((rolls[0] ?? 0) / bossMaxHp) * 100 : 0,
-        bossMaxHp ? ((rolls.at(-1) ?? 0) / bossMaxHp) * 100 : 0,
-      ],
-      rollRange: range,
-    };
-  }
-
-  calculation() {
-    const build = this.attackerBuild();
-    const move = this.selectedMove();
-    const defenses = this.bossDefenseModel();
-    const stages = this.stageModel();
-    const bases = this.bossBases();
-    const boss = {
-      stats: {
-        hp: bossHpFromBase(bases.hp),
-        atk: normalBossDefense(bases.atk),
-        def: defenses.finalDef,
-        spa: normalBossDefense(bases.spa),
-        spd: defenses.finalSpd,
-        spe: normalBossDefense(bases.spe),
-      },
-      maxHp: bossHpFromBase(bases.hp),
-    };
-    const payload = {
-      attacker: build,
-      boss,
-      move,
-      attackerTypes: build.pokemon?.types?.map(({ type }) => type.name) || [],
-      bossTypes: this.bossTypes(),
+      boss: this.cfg.boss?.name || "",
+      attacker: this.cfg.attacker?.name || "",
+      move: this.cfg.move?.name || "",
+      level: this.cfg.level,
+      nature: this.cfg.nature,
       ability: this.cfg.ability,
-      defenderAbility: "",
-      defenderHP: boss.maxHp,
-      defenderMaxHP: boss.maxHp,
-      stages: build.stages,
-      bossStages: { ...emptyStages(), def: stages.def, spd: stages.spd },
-      critical: Boolean(this.cfg.critical),
-      isTerastallized: Boolean(this.cfg.terastallized),
-      teraType: this.cfg.teraType || "normal",
+      item: this.cfg.item,
+      teraType: this.cfg.teraType,
+      terastallized: this.cfg.terastallized,
+      atkIv: this.cfg.atkIv,
+      atkEv: this.cfg.atkEv,
+      spaIv: this.cfg.spaIv,
+      spaEv: this.cfg.spaEv,
+      atkStage: this.cfg.atkStage,
+      spaStage: this.cfg.spaStage,
+      critStage: this.cfg.critStage,
+      screechCount: this.cfg.screechCount,
+      defenseStage: this.cfg.defenseStage,
+      simpleDefense: this.cfg.simpleDefense,
+      metalSoundCount: this.cfg.metalSoundCount,
+      fakeTearsCount: this.cfg.fakeTearsCount,
+      spdStage: this.cfg.spdStage,
+      simpleSpd: this.cfg.simpleSpd,
+      typeChanges: {
+        magicPowder: this.cfg.magicPowder,
+        trickOrTreat: this.cfg.trickOrTreat,
+        forestsCurse: this.cfg.forestsCurse,
+        soak: this.cfg.soak,
+        manualTypesEnabled: this.cfg.manualTypesEnabled,
+        manualType1: this.cfg.manualType1,
+        manualType2: this.cfg.manualType2,
+      },
+      customPowerEnabled: this.cfg.customPowerEnabled,
+      customPower: this.cfg.customPower,
+      critical: this.cfg.critical,
+      faintedAllies: this.cfg.faintedAllies,
+      hitCount: this.cfg.hitCount,
     };
-    const result = this.applyRollRange(damageRolls(payload), boss.maxHp);
-    return { build, move, boss, defenses, stages, payload, result };
   }
 
-  reverseEstimate() {
-    const observed = Math.max(0, Math.round(Number(this.cfg.observedDamage) || 0));
-    if (!observed || !this.cfg.move || !this.cfg.attacker) return null;
-    const calc = this.calculation();
-    const physical = isPhysical(calc.move);
-    const defenseKey = physical ? "def" : "spd";
-    const normalDefense = physical ? calc.defenses.normalDef : calc.defenses.normalSpd;
-    const stage = physical ? calc.stages.def : calc.stages.spd;
-    const maxSearch = Math.max(100000, Math.ceil(normalDefense * 30));
-    let best = null;
-    const wrapped = Boolean(this.cfg.observedMayBeWrapped);
+  queueServerCalculation() {
+    this.requestSequence += 1;
+    this.serverResult = null;
+    this.serverError = "";
+    this.calculationPending = true;
+    this.renderResultsOnly();
+    this.scheduleQuickCalc();
+  }
 
-    const checkDefense = (defense) => {
-      const safeDefense = Math.max(1, Math.min(maxSearch, Math.round(defense)));
-      const bossStats = { ...calc.boss.stats, [defenseKey]: safeDefense };
-      const result = this.applyRollRange(damageRolls({
-        ...calc.payload,
-        boss: { stats: bossStats, maxHp: calc.boss.maxHp },
-        bossStages: { ...emptyStages(), [defenseKey]: stage },
-        critical: Boolean(this.cfg.observedCrit),
-      }), calc.boss.maxHp);
-      const candidates = this.reverseCandidates(result.rolls, wrapped);
-      candidates.forEach(({ damage, displayDamage, compareDamage, label }) => {
-        const delta = Math.abs(compareDamage - observed);
-        if (!best || delta < best.delta) {
-          best = {
-            defense: safeDefense,
-            damage,
-            displayDamage,
-            label,
-            delta,
-            stagedDefense: applyStage(safeDefense, stage),
-            observedMayBeWrapped: wrapped,
-          };
-        }
-      });
-      return Math.max(...candidates.map(({ damage }) => damage));
-    };
-
-    const searchAroundRawTarget = (rawTarget, scanRadius = 220) => {
-      let low = 1;
-      let high = maxSearch;
-      while (low < high) {
-        const mid = Math.floor((low + high) / 2);
-        const damageAtMid = checkDefense(mid);
-        if (damageAtMid > rawTarget) low = mid + 1;
-        else high = mid;
-      }
-
-      const scanStart = Math.max(1, low - scanRadius);
-      const scanEnd = Math.min(maxSearch, low + scanRadius);
-      for (let defense = scanStart; defense <= scanEnd; defense += 1) {
-        checkDefense(defense);
-        if (best?.delta === 0 && this.cfg.reverseAssumption !== "unknown") break;
-      }
-    };
-
-    if (wrapped) {
-      const maxPossibleRaw = checkDefense(1);
-      const targets = [];
-      for (let target = observed; target <= maxPossibleRaw && targets.length < 16; target += MYUU_DAMAGE_CAP) {
-        targets.push(target);
-      }
-      if (!targets.length) targets.push(observed);
-      targets.forEach((target) => searchAroundRawTarget(target, 80));
-    } else {
-      searchAroundRawTarget(observed);
+  async refreshServerResult() {
+    const payload = this.requestPayload();
+    if (!payload.boss || !payload.attacker || !payload.move) {
+      this.calculationPending = false;
+      this.serverResult = null;
+      this.serverError = "Choose a boss, attacker, and move.";
+      this.renderResultsOnly();
+      return;
     }
 
-    if (!best) return null;
-    const original = this.invertGuardChain(best.defense, defenseKey);
-    return {
-      ...best,
-      originalDefense: original,
-      multiplier: normalDefense ? original / normalDefense : 0,
-      defenseKind: physical ? "Def" : "SpD",
-    };
-  }
-
-  reverseCandidates(rolls, wrapped = false) {
-    const mapCandidate = (damage, label) => ({
-      damage,
-      displayDamage: getMyuuDisplayedDamage(damage),
-      compareDamage: wrapped ? getMyuuDisplayedDamage(damage) : damage,
-      label,
-    });
-    if (this.cfg.reverseAssumption === "min") return [mapCandidate(rolls[0], "min")];
-    if (this.cfg.reverseAssumption === "max") return [mapCandidate(rolls.at(-1), "max")];
-    if (this.cfg.reverseAssumption === "average") return [mapCandidate(Math.round(average(rolls)), "average")];
-    return rolls.map((damage, index) => mapCandidate(damage, `roll ${index + 1}`));
-  }
-
-  invertGuardChain(finalDefense, defenseKey = "def") {
-    let value = Number(finalDefense) || 1;
-    [...this.guardChain()].reverse().forEach((user) => {
-      value = Math.max(1, (value * 2) - user[defenseKey]);
-    });
-    return Math.round(value);
+    const requestId = ++this.requestSequence;
+    this.calculationPending = true;
+    this.serverResult = null;
+    this.serverError = "";
+    this.renderResultsOnly();
+    try {
+      const response = await fetch("/api/quick-calc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (requestId !== this.requestSequence) return;
+      if (!response.ok || typeof data.summary !== "string" || typeof data.damageRange !== "string") {
+        throw new Error(data.error || "Server calculation unavailable");
+      }
+      this.serverResult = { summary: data.summary, damageRange: data.damageRange };
+    } catch {
+      if (requestId !== this.requestSequence) return;
+      this.serverResult = null;
+      this.serverError = "Server calculation unavailable";
+    } finally {
+      if (requestId === this.requestSequence) {
+        this.calculationPending = false;
+        this.renderResultsOnly();
+      }
+    }
   }
 
   resultSummary(calc) {
-    const stage = isPhysical(calc.move) ? Number(this.cfg.atkStage) || 0 : Number(this.cfg.spaStage) || 0;
-    const stageText = stage === 0 ? "" : `${stage > 0 ? "+" : ""}${stage} `;
-    const itemText = this.cfg.item ? `${titleCase(this.cfg.item)} ` : "";
-    const abilityText = this.cfg.ability ? `${titleCase(this.cfg.ability)} ` : "";
-    const movePower = calc.move?.customPower ?? calc.move?.basePower ?? calc.move?.power ?? "-";
-    return `${stageText}${itemText}${abilityText}${displayName(this.cfg.attacker?.name || "Attacker")} using ${titleCase(calc.move?.name || "Move")} (${movePower} BP) vs Boss ${displayName(this.cfg.boss?.name || "Boss")}`;
+    return this.serverResult?.summary
+      || `${displayName(this.cfg.attacker?.name || "Attacker")} using ${titleCase(calc.move?.name || "Move")} vs ${displayName(this.cfg.boss?.name || "Boss")}`;
   }
 
   resultText() {
-    const calc = this.calculation();
-    const displayed = getMyuuDisplayedDamageRange(calc.result.min, calc.result.max);
-    const bossTypes = this.bossTypes();
-    return [
-      this.resultSummary(calc),
-      "",
-      `Roll Range: ${calc.result.rollRange?.label || this.rollRangeModel().label}`,
-      `Effectiveness: ${effectivenessLabel(calc.result.effectiveness)}`,
-      `Current Boss Type: ${bossTypes.map(titleCase).join(" / ") || "Unknown"}`,
-      "",
-      `Raw Damage: ${fmt(calc.result.min)} - ${fmt(calc.result.max)}`,
-      `Myuu Displayed Damage: ${fmt(displayed.min)} - ${fmt(displayed.max)}`,
-      "",
-      `Myuu damage wraps after ${fmt(MYUU_DAMAGE_CAP)}.`,
-      "Based on the selected damage roll range.",
-    ].join("\n");
+    const calc = this.viewModel();
+    if (!this.serverResult) return this.serverError || "Server calculation unavailable";
+    return `${this.resultSummary(calc)}\nDamage: ${this.serverResult.damageRange}`;
   }
 
   render() {
     clearTimeout(this.renderTimer);
-    const calc = this.calculation();
+    const calc = this.viewModel();
     this.root.innerHTML = `
       <section class="quick-calc" aria-labelledby="quick-calc-title">
         <div class="workspace-heading quick-calc-heading">
           <div>
             <span class="eyebrow">Damage test bench</span>
             <h1 id="quick-calc-title">Quick Calc</h1>
-            <p>Fast independent damage checks for raid setup chains, stat drops, type changes, and damage rolls.</p>
+            <p>Accurate raid damage is calculated securely by the server.</p>
           </div>
           <div class="quick-calc-actions">
             <select data-preset aria-label="Apply preset">
               <option value="">Preset</option>
               ${Object.entries(QUICK_CALC_PRESETS).map(([key, preset]) => `<option value="${key}">${escapeHtml(preset.label)}</option>`).join("")}
             </select>
-            <button type="button" class="button" data-save-calc>Save Quick Calc</button>
             <button type="button" class="button" data-reset-calc>Reset Quick Calc</button>
           </div>
         </div>
@@ -759,7 +461,6 @@ export class QuickCalc {
         <div class="quick-stat-strip">
           <div><span>${baseKey.toUpperCase()} before boosts</span><strong>${fmt(calc.build.stats[baseKey])}</strong></div>
           <div><span>After stage</span><strong>${fmt(applyStage(calc.build.stats[baseKey], stage))}</strong></div>
-          <div><span>After ability/item</span><strong>${fmt(calc.result.attackStat || 0)}</strong></div>
         </div>
       </section>`;
   }
@@ -783,47 +484,10 @@ export class QuickCalc {
   }
 
   setupPanel(calc) {
-    const guardChain = this.guardChain();
-    const availableGuardSplitters = Object.keys(QUICK_CALC_GUARD_SPLIT_USERS);
     return `
       <section class="quick-card quick-wide" aria-labelledby="quick-setup-title">
-        <div class="quick-card-title compact"><div><span class="eyebrow">Raid modifiers</span><h2 id="quick-setup-title">Myuu Raid Setup</h2></div></div>
+        <div class="quick-card-title compact"><div><span class="eyebrow">Battle modifiers</span><h2 id="quick-setup-title">Setup</h2></div></div>
         <div class="quick-setup-grid">
-          <div class="quick-subpanel">
-            <div class="quick-guard-stats-heading">
-              <h3>Guard Splitter Stats</h3>
-              <button type="button" class="button quick-guard-reset" data-reset-splitter-stats>Reset Splitter Stats</button>
-            </div>
-            <p class="quick-guard-help">Set the Defense and Sp. Defense each splitter contributes to the chain.</p>
-            <div class="quick-guard-stats" aria-label="Guard Splitter Stats">
-              ${Object.entries(QUICK_CALC_GUARD_SPLIT_USERS).map(([key, splitter]) => `
-                <div class="quick-guard-stat-row">
-                  <strong>${escapeHtml(splitter.name)}</strong>
-                  <label><span>Def</span><input type="number" inputmode="numeric" min="1" max="999" step="1" data-splitter="${key}" data-splitter-stat="def" aria-label="${escapeHtml(splitter.name)} Defense" value="${escapeHtml(this.cfg.splitterStats?.[key]?.def ?? splitter.def)}"></label>
-                  <label><span>SpD</span><input type="number" inputmode="numeric" min="1" max="999" step="1" data-splitter="${key}" data-splitter-stat="spd" aria-label="${escapeHtml(splitter.name)} Special Defense" value="${escapeHtml(this.cfg.splitterStats?.[key]?.spd ?? splitter.spd)}"></label>
-                </div>`).join("")}
-            </div>
-            <h3 class="quick-guard-order-title">Guard Split Order</h3>
-            <p class="quick-guard-help">Add each splitter, then use the controls to set the exact sequential order.</p>
-            <div class="quick-guard-add">
-              <label><span>Add splitter</span><select data-guard-add-select>
-                ${availableGuardSplitters.map((key) => `<option value="${key}">${QUICK_CALC_GUARD_SPLIT_USERS[key].name}</option>`).join("")}
-              </select></label>
-              <button type="button" class="button" data-add-guard>Add to chain</button>
-            </div>
-            ${guardChain.length ? `<ol class="quick-guard-chain" aria-label="Selected Guard Split order">
-              ${guardChain.map((user, index) => `<li data-guard-row="${index}">
-                <span class="quick-guard-position" aria-hidden="true">${index + 1}</span>
-                <span class="quick-guard-name"><strong>${escapeHtml(user.name)}</strong></span>
-                <span class="quick-guard-actions">
-                  <button type="button" data-move-guard="${index}" data-guard-direction="up" aria-label="Move ${escapeHtml(user.name)} up" title="Move up" ${index === 0 ? "disabled" : ""}>\u2191</button>
-                  <button type="button" data-move-guard="${index}" data-guard-direction="down" aria-label="Move ${escapeHtml(user.name)} down" title="Move down" ${index === guardChain.length - 1 ? "disabled" : ""}>\u2193</button>
-                  <button type="button" class="quick-guard-remove" data-remove-guard="${index}" aria-label="Remove ${escapeHtml(user.name)} from Guard Split order">Remove</button>
-                </span>
-              </li>`).join("")}
-            </ol>` : `<p class="quick-guard-empty">No Guard Split users added.</p>`}
-            <div class="quick-log"><strong>${guardChain.length ? `Guard Split chain applied: ${guardChain.map((user) => escapeHtml(user.name)).join(" → ")}` : "No Guard Split chain applied."}</strong></div>
-          </div>
           <div class="quick-subpanel">
             <h3>Screech / Defense Drops</h3>
             <div class="quick-fields three">
@@ -859,8 +523,6 @@ export class QuickCalc {
 
   movePanel(calc) {
     const move = calc.move;
-    const range = this.rollRangeModel();
-    const customDisabled = this.cfg.rollRangeMode === "custom" ? "" : "disabled";
     return `
       <section class="quick-card quick-wide" aria-labelledby="quick-move-title">
         <div class="quick-card-title compact"><div><span class="eyebrow">Move and options</span><h2 id="quick-move-title">Move + Damage Options</h2></div></div>
@@ -872,23 +534,12 @@ export class QuickCalc {
           <div class="quick-stat-strip">
             <div><span>Category</span><strong>${titleCase(move?.damage_class?.name || "status")}</strong></div>
             <div><span>Type</span><strong>${titleCase(move?.type?.name || "-")}</strong></div>
-            <div><span>Base power</span><strong>${move?.basePower ?? move?.power ?? "-"}</strong></div>
-            <div><span>Used power</span><strong>${move?.customPower ?? "-"}</strong></div>
           </div>
           <div class="quick-fields four">
             <label class="quick-check"><input type="checkbox" data-cfg-check="customPowerEnabled" ${this.cfg.customPowerEnabled ? "checked" : ""}><span>Custom power override</span></label>
             <label><span>Custom power</span><input type="number" min="0" max="9999" data-cfg="customPower" value="${this.cfg.customPower}"></label>
             <label class="quick-check"><input type="checkbox" data-cfg-check="critical" ${this.cfg.critical ? "checked" : ""}><span>Critical hit</span></label>
             <label><span>Hits</span><input type="number" min="1" max="5" data-cfg="hitCount" value="${this.cfg.hitCount}"></label>
-          </div>
-          <div class="quick-fields three">
-            <label><span>Damage Roll Mode</span><select data-cfg="rollRangeMode">
-              <option value="standard" ${this.cfg.rollRangeMode === "standard" ? "selected" : ""}>Standard Pokemon 85%-100%</option>
-              <option value="myuu-test" ${this.cfg.rollRangeMode === "myuu-test" ? "selected" : ""}>Myuu Test 70%-80%</option>
-              <option value="custom" ${this.cfg.rollRangeMode === "custom" ? "selected" : ""}>Custom</option>
-            </select></label>
-            <label><span>Custom roll min %</span><input type="number" min="1" max="100" data-cfg="customRollMin" value="${this.cfg.customRollMin}" ${customDisabled}></label>
-            <label><span>Custom roll max %</span><input type="number" min="1" max="100" data-cfg="customRollMax" value="${this.cfg.customRollMax}" ${customDisabled}></label>
           </div>
           <div class="quick-fields two">
             <label><span>Fainted allies count</span><input type="number" min="0" max="5" data-cfg="faintedAllies" value="${this.cfg.faintedAllies}"></label>
@@ -899,39 +550,24 @@ export class QuickCalc {
   }
 
   resultsPanel(calc) {
-    const displayed = getMyuuDisplayedDamageRange(calc.result.min, calc.result.max);
     const summary = this.resultSummary(calc);
-    const bossTypes = this.bossTypes();
+    const resultContent = this.calculationPending
+      ? `<div class="quick-simple-results"><div><span>Status</span><strong>Calculating securely...</strong></div></div>`
+      : this.serverResult
+        ? `<div class="quick-simple-results"><div><span>Damage</span><strong>${escapeHtml(this.serverResult.damageRange)}</strong></div></div>`
+        : `<div class="quick-simple-results"><div><span>Status</span><strong>${escapeHtml(this.serverError || "Server calculation unavailable")}</strong></div></div>`;
     return `
       <section class="quick-card quick-wide" data-quick-results aria-labelledby="quick-result-title">
         <div class="quick-card-title compact">
           <div><span class="eyebrow">Output</span><h2 id="quick-result-title">Damage Results</h2></div>
-          <div class="quick-result-actions">
-            <button type="button" class="button" data-copy-result>Copy Result</button>
-          </div>
         </div>
         <div class="quick-result-layout">
           <div class="quick-main-result">
             <p class="quick-summary-line">${escapeHtml(summary)}</p>
-            <p class="quick-roll-range-line"><span>Roll Range</span><strong>${escapeHtml(calc.result.rollRange?.label || this.rollRangeModel().label)}</strong></p>
-            <div class="quick-type-effectiveness" aria-label="Current type effectiveness">
-              <div><span>Effectiveness</span><strong>${effectivenessLabel(calc.result.effectiveness)}</strong></div>
-              <div><span>Current Boss Type</span><div class="type-row">${bossTypes.map((type) => `<span class="type-badge type-${type}">${escapeHtml(type)}</span>`).join("") || "<em>Unknown</em>"}</div></div>
-            </div>
-            <div class="quick-simple-results">
-              <div><span>Raw Damage</span><strong>${fmt(calc.result.min)} - ${fmt(calc.result.max)}</strong></div>
-              <div class="myuu-range"><span>Myuu Displayed Damage</span><strong>${fmt(displayed.min)} - ${fmt(displayed.max)}</strong></div>
-            </div>
+            ${resultContent}
           </div>
         </div>
       </section>`;
-  }
-
-  selectedRolls(rolls) {
-    if (this.cfg.rollMode === "min") return [0];
-    if (this.cfg.rollMode === "max") return [rolls.length - 1];
-    if (this.cfg.rollMode === "average") return [7, 8];
-    return rolls.map((_, index) => index);
   }
 
   stageOptions(selected) {
@@ -948,12 +584,7 @@ export class QuickCalc {
       const field = event.target;
       if (field.matches("[data-cfg]")) {
         this.updateConfigField(field);
-        this.scheduleQuickCalcSave();
-        if (field.dataset.cfg !== "observedDamage") this.scheduleQuickCalc();
-      } else if (field.matches("[data-splitter-stat]")) {
-        this.updateSplitterStatField(field);
-        this.scheduleQuickCalcSave();
-        this.scheduleQuickCalc();
+        this.queueServerCalculation();
       } else if (field.matches("[data-boss-search]")) {
         this.updateBossResults(field);
       } else if (field.matches("[data-attacker-search]")) {
@@ -977,19 +608,14 @@ export class QuickCalc {
       const field = event.target;
       if (field.matches("[data-cfg]")) {
         this.updateConfigField(field);
-        this.scheduleQuickCalcSave();
         if (field.type === "number") this.normalizeConfigField(field);
-        if (field.type === "number" || field.dataset.cfg === "observedDamage") this.renderResultsOnly();
+        if (field.type === "number") this.renderResultsOnly();
         else this.render();
-      } else if (field.matches("[data-splitter-stat]")) {
-        this.normalizeSplitterStatField(field);
-        this.scheduleQuickCalcSave();
-        this.renderResultsOnly();
+        this.queueServerCalculation();
       } else if (field.matches("[data-cfg-check]")) {
         this.cfg[field.dataset.cfgCheck] = field.checked;
-        this.cfg.reverse = null;
-        this.scheduleQuickCalcSave();
         this.render();
+        this.queueServerCalculation();
       } else if (field.matches("[data-preset]") && field.value) {
         this.applyPreset(field.value);
       } else if (field.matches("[data-boss-search]")) {
@@ -1004,9 +630,8 @@ export class QuickCalc {
       } else if (field.matches("[data-item-search]")) {
         this.cfg.item = slug(field.value);
         this.itemQuery = "";
-        this.cfg.reverse = null;
-        this.scheduleQuickCalcSave();
         this.render();
+        this.queueServerCalculation();
       }
     });
 
@@ -1014,59 +639,31 @@ export class QuickCalc {
       const field = event.target;
       if (field.matches("[data-cfg]") && field.type === "number") {
         this.normalizeConfigField(field);
-        this.scheduleQuickCalcSave();
         this.render();
-      } else if (field.matches("[data-splitter-stat]")) {
-        this.normalizeSplitterStatField(field);
-        this.scheduleQuickCalcSave();
-        this.render();
+        this.queueServerCalculation();
       }
     }, true);
 
-    this.root.addEventListener("click", (event) => {
+    this.root.addEventListener("click", async (event) => {
       const button = event.target.closest("button");
       if (!button || !this.root.contains(button)) return;
 
       if (button.matches("[data-pick-boss]")) this.loadBoss(button.dataset.pickBoss);
       else if (button.matches("[data-pick-attacker]")) this.loadAttacker(button.dataset.pickAttacker);
       else if (button.matches("[data-pick-move]")) this.loadMove(button.dataset.pickMove);
-      else if (button.matches("[data-add-guard]")) {
-        const select = this.root.querySelector("[data-guard-add-select]");
-        this.addGuardSplitter(select?.value);
-      }
-      else if (button.matches("[data-move-guard]")) this.moveGuardSplitter(Number(button.dataset.moveGuard), button.dataset.guardDirection);
-      else if (button.matches("[data-remove-guard]")) this.removeGuardSplitter(Number(button.dataset.removeGuard));
-      else if (button.matches("[data-reset-splitter-stats]")) this.resetSplitterStats();
       else if (button.matches("[data-pick-item]")) {
         this.cfg.item = button.dataset.pickItem;
         this.itemQuery = "";
-        this.cfg.reverse = null;
-        this.scheduleQuickCalcSave();
         this.render();
-      } else if (button.matches("[data-save-calc]")) this.withActionLock(() => this.saveCalc());
-      else if (button.matches("[data-reset-calc]")) this.withActionLock(async () => {
-        localStorage.removeItem(STORAGE_KEY);
+        this.queueServerCalculation();
+      } else if (button.matches("[data-reset-calc]")) {
         this.cfg = this.defaultConfig();
+        this.serverResult = null;
+        this.serverError = "";
+        this.calculationPending = true;
         this.status = "Quick Calc reset";
         await this.bootstrap();
-      });
-      else if (button.matches("[data-copy-result]")) this.withActionLock(async () => {
-        await copyText(this.resultText());
-        this.status = "Result copied";
-        this.render();
-      });
-      else if (button.matches("[data-export-json]")) this.withActionLock(async () => {
-        await copyText(JSON.stringify(this.exportData(), null, 2));
-        this.status = "Quick Calc JSON copied";
-        this.render();
-      });
-      else if (button.matches("[data-import-json]")) this.withActionLock(() => this.importFromPrompt());
-      else if (button.matches("[data-estimate-defense]")) this.withActionLock(() => {
-        this.cfg.reverse = this.reverseEstimate();
-        this.status = this.cfg.reverse ? "Reverse estimate updated" : "Enter observed damage before estimating";
-        this.scheduleQuickCalcSave();
-        this.render();
-      });
+      }
     });
 
     this.root.addEventListener("error", (event) => {
@@ -1079,83 +676,11 @@ export class QuickCalc {
 
   updateConfigField(field) {
     this.cfg[field.dataset.cfg] = field.value;
-    this.cfg.reverse = null;
-  }
-
-  updateSplitterStatField(field) {
-    const key = field.dataset.splitter;
-    const stat = field.dataset.splitterStat;
-    if (!QUICK_CALC_GUARD_SPLIT_USERS[key] || !["def", "spd"].includes(stat)) return;
-    this.cfg.splitterStats ??= defaultQuickCalcSplitterStats();
-    this.cfg.splitterStats[key] ??= {
-      def: QUICK_CALC_GUARD_SPLIT_USERS[key].def,
-      spd: QUICK_CALC_GUARD_SPLIT_USERS[key].spd,
-    };
-    this.cfg.splitterStats[key][stat] = field.value;
-    this.cfg.reverse = null;
-  }
-
-  normalizeSplitterStatField(field) {
-    const key = field.dataset.splitter;
-    const stat = field.dataset.splitterStat;
-    const defaults = QUICK_CALC_GUARD_SPLIT_USERS[key];
-    if (!defaults || !["def", "spd"].includes(stat)) return;
-    const value = normalizeSplitterStat(field.value, defaults[stat]);
-    this.cfg.splitterStats ??= defaultQuickCalcSplitterStats();
-    this.cfg.splitterStats[key] ??= { def: defaults.def, spd: defaults.spd };
-    this.cfg.splitterStats[key][stat] = value;
-    this.cfg.reverse = null;
-    field.value = String(value);
-  }
-
-  resetSplitterStats() {
-    this.cfg.splitterStats = defaultQuickCalcSplitterStats();
-    this.cfg.reverse = null;
-    this.status = "Splitter stats reset to defaults";
-    this.scheduleQuickCalcSave();
-    this.render();
-  }
-
-  commitGuardSplitOrder(message) {
-    this.cfg.guardSplitOrder = normalizeGuardSplitOrder(this.cfg.guardSplitOrder);
-    this.cfg.reverse = null;
-    this.status = message;
-    this.scheduleQuickCalcSave();
-    this.render();
-  }
-
-  addGuardSplitter(key) {
-    if (!GUARD_SPLITTER_KEYS.includes(key)) return;
-    this.cfg.guardSplitOrder = [...this.cfg.guardSplitOrder, key];
-    const name = key === CUSTOM_GUARD_SPLITTER ? "Custom" : QUICK_CALC_GUARD_SPLIT_USERS[key].name;
-    this.commitGuardSplitOrder(`${name} added to Guard Split order`);
-  }
-
-  removeGuardSplitter(index) {
-    if (!Number.isInteger(index) || index < 0 || index >= this.cfg.guardSplitOrder.length) return;
-    const [key] = this.cfg.guardSplitOrder.splice(index, 1);
-    const name = key === CUSTOM_GUARD_SPLITTER ? "Custom" : QUICK_CALC_GUARD_SPLIT_USERS[key]?.name;
-    this.commitGuardSplitOrder(`${name || "Splitter"} removed from Guard Split order`);
-  }
-
-  moveGuardSplitter(index, direction) {
-    const order = [...this.cfg.guardSplitOrder];
-    const nextIndex = direction === "up" ? index - 1 : index + 1;
-    if (!Number.isInteger(index) || index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
-    [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
-    this.cfg.guardSplitOrder = order;
-    const key = order[nextIndex];
-    const name = key === CUSTOM_GUARD_SPLITTER ? "Custom" : QUICK_CALC_GUARD_SPLIT_USERS[key]?.name;
-    this.commitGuardSplitOrder(`${name || "Splitter"} moved ${direction}`);
   }
 
   normalizeConfigField(field) {
     const key = field.dataset.cfg;
     if (!key || field.type !== "number") return;
-    if (field.value === "" && key === "observedDamage") {
-      this.cfg[key] = "";
-      return;
-    }
     const defaults = this.defaultConfig();
     const min = field.min === "" ? Number.NEGATIVE_INFINITY : Number(field.min);
     const max = field.max === "" ? Number.POSITIVE_INFINITY : Number(field.max);
@@ -1169,15 +694,6 @@ export class QuickCalc {
       value = Math.max(min, Math.min(max, value));
     }
     this.cfg[key] = value;
-    if (key === "customRollMin" && value > Number(this.cfg.customRollMax || 0)) {
-      this.cfg.customRollMax = value;
-      const maxField = this.root.querySelector("[data-cfg='customRollMax']");
-      if (maxField) maxField.value = String(value);
-    } else if (key === "customRollMax" && value < Number(this.cfg.customRollMin || 0)) {
-      this.cfg.customRollMin = value;
-      const minField = this.root.querySelector("[data-cfg='customRollMin']");
-      if (minField) minField.value = String(value);
-    }
     field.value = String(value);
   }
 
@@ -1190,20 +706,10 @@ export class QuickCalc {
     clearTimeout(this.resultsTimer);
     const currentResults = this.root.querySelector("[data-quick-results]");
     if (!currentResults) return;
-    const calc = this.calculation();
+    const calc = this.viewModel();
     const wrapper = document.createElement("div");
     wrapper.innerHTML = this.resultsPanel(calc).trim();
     currentResults.replaceWith(wrapper.firstElementChild);
-  }
-
-  async withActionLock(action) {
-    if (this.actionLocked) return;
-    this.actionLocked = true;
-    try {
-      await action();
-    } finally {
-      this.actionLocked = false;
-    }
   }
 
   updateBossResults(input) {
@@ -1277,20 +783,16 @@ export class QuickCalc {
       const pokemon = await getPokemon(name);
       if (sequence !== null && sequence !== this.sequence) return;
       this.cfg.boss = pokemon;
-      const bases = this.bossBases();
-      this.cfg.manualBossDef = Math.floor(normalBossDefense(bases.def) * this.cfg.bossDefMultiplier);
-      this.cfg.manualBossSpd = Math.floor(normalBossDefense(bases.spd) * this.cfg.bossSpdMultiplier);
       this.cfg.manualType1 = this.cfg.boss.types?.[0]?.type?.name || "normal";
       this.cfg.manualType2 = this.cfg.boss.types?.[1]?.type?.name || "";
       this.bossQuery = "";
-      this.cfg.reverse = null;
       this.status = `Loaded boss ${displayName(this.cfg.boss.name)}`;
     } catch (error) {
       this.status = `Could not load boss: ${error.message}`;
     }
     if (rerender) {
-      this.scheduleQuickCalcSave();
       this.render();
+      this.refreshServerResult();
     }
   }
 
@@ -1307,14 +809,13 @@ export class QuickCalc {
       this.cfg.ability = this.cfg.attacker.abilities?.[0]?.ability?.name || "";
       this.cfg.teraType = this.cfg.attacker.types?.[0]?.type?.name || "normal";
       this.attackerQuery = "";
-      this.cfg.reverse = null;
       this.status = `Loaded attacker ${displayName(this.cfg.attacker.name)}`;
     } catch (error) {
       this.status = `Could not load attacker: ${error.message}`;
     }
     if (rerender) {
-      this.scheduleQuickCalcSave();
       this.render();
+      this.refreshServerResult();
     }
   }
 
@@ -1336,14 +837,13 @@ export class QuickCalc {
         this.cfg.atkEv = Math.max(this.cfg.atkEv, 252);
       }
       this.moveQuery = "";
-      this.cfg.reverse = null;
       this.status = `Loaded move ${titleCase(this.cfg.move.name)}`;
     } catch (error) {
       this.status = `Could not load move: ${error.message}`;
     }
     if (rerender) {
-      this.scheduleQuickCalcSave();
       this.render();
+      this.refreshServerResult();
     }
   }
 
@@ -1360,86 +860,10 @@ export class QuickCalc {
     Object.entries(preset).forEach(([field, value]) => {
       if (!["label", "boss", "attacker", "move"].includes(field)) this.cfg[field] = Array.isArray(value) ? [...value] : value;
     });
-    this.cfg.guardSplitOrder = normalizeGuardSplitOrder(this.cfg.guardSplitOrder);
-    this.cfg.reverse = null;
     this.status = `Applied preset: ${preset.label}`;
     if (rerender) {
-      this.scheduleQuickCalcSave();
       this.render();
-    }
-  }
-
-  exportData() {
-    return {
-      version: 4,
-      config: {
-        ...this.cfg,
-        boss: this.cfg.boss?.name || null,
-        attacker: this.cfg.attacker?.name || null,
-        move: this.cfg.move?.name || null,
-        reverse: null,
-      },
-      result: this.resultText(),
-    };
-  }
-
-  async saveCalc({ silent = false, rerender = true } = {}) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.exportData()));
-    if (!silent) this.status = "Quick Calc saved";
-    if (rerender && !silent) this.render();
-  }
-
-  async loadSavedCalc({ silent = false, rerender = true, sequence = null } = {}) {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
-      const saved = JSON.parse(raw || "null");
-      if (!saved?.config) throw new Error("No saved calc");
-      const { boss, attacker, move, guardUsers, customGuardEnabled, splitterStats, ...rest } = saved.config;
-      const legacyOrder = Array.isArray(guardUsers) ? guardUsers : [];
-      const savedOrder = Array.isArray(rest.guardSplitOrder) ? [...rest.guardSplitOrder] : [...legacyOrder];
-      if (!Array.isArray(rest.guardSplitOrder) && customGuardEnabled) savedOrder.push(CUSTOM_GUARD_SPLITTER);
-      const savedSplitterStats = normalizeQuickCalcSplitterStats(splitterStats);
-      this.cfg = {
-        ...this.defaultConfig(),
-        ...rest,
-        guardSplitOrder: normalizeGuardSplitOrder(savedOrder),
-        splitterStats: savedSplitterStats,
-      };
-      const loadSequence = sequence ?? ++this.sequence;
-      if (boss) await this.loadBossForSequence(boss, false, loadSequence);
-      if (loadSequence !== this.sequence) return false;
-      if (attacker) await this.loadAttackerForSequence(attacker, false, loadSequence);
-      if (loadSequence !== this.sequence) return false;
-      if (move) await this.loadMoveForSequence(move, false, loadSequence);
-      if (loadSequence !== this.sequence) return false;
-      Object.assign(this.cfg, rest, {
-        guardSplitOrder: normalizeGuardSplitOrder(savedOrder),
-        splitterStats: savedSplitterStats,
-        reverse: null,
-      });
-      if (!silent) this.status = "Quick Calc loaded";
-      if (rerender) this.render();
-      return true;
-    } catch (error) {
-      if (!silent) this.status = `Load failed: ${error.message}`;
-      if (rerender && !silent) this.render();
-      return false;
-    }
-  }
-
-  async importFromPrompt() {
-    const text = prompt("Paste exported Quick Calc JSON:");
-    if (!text) return;
-    try {
-      const data = JSON.parse(text);
-      if (!data?.config) throw new Error("Missing Quick Calc config");
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      await this.loadSavedCalc({ silent: true, rerender: false });
-      this.status = "Quick Calc JSON imported";
-      this.render();
-    } catch (error) {
-      this.status = `Import failed: ${error.message}`;
-      this.render();
+      this.refreshServerResult();
     }
   }
 }

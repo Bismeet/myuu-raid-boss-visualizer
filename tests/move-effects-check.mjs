@@ -1,5 +1,5 @@
 import { BattleState, getEffectiveAbility } from "../js/core/battle-state.js";
-import { calculatePokemonStats } from "../js/core/stats.js";
+import { calculateBossStats, calculatePokemonStats } from "../js/core/stats.js";
 import { emptyStages } from "../js/core/stages.js";
 
 console.log("Running move effects registry tests...");
@@ -61,8 +61,7 @@ state.team[1].moves[2] = { name: "focus-energy", type: { name: "normal" }, damag
 state.team[1].moves[3] = { name: "unknown-status-move", type: { name: "normal" }, damage_class: { name: "status" } };
 state.team[1].stats = calculatePokemonStats(smeargle, state.team[1]);
 
-const bossStats = calculatePokemonStats(mewtwo, { level: 200, nature: "hardy", ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 }, evs: { hp: 252, atk: 252, def: 252, spa: 252, spd: 252, spe: 252 } });
-bossStats.hp = 1060000;
+const bossStats = calculateBossStats(mewtwo);
 state.setBoss(mewtwo, bossStats);
 state.bossMoves[0] = { name: "aerial-ace", power: 60, type: { name: "flying" }, damage_class: { name: "physical" } };
 
@@ -233,8 +232,7 @@ function buildSimpleState() {
   simpleState.team[0].moves[3] = { name: "speed-swap", type: { name: "psychic" }, damage_class: { name: "status" } };
   simpleState.team[0].stats = calculatePokemonStats(smeargle, simpleState.team[0]);
 
-  const simpleBossStats = calculatePokemonStats(mewtwo, { level: 200, nature: "hardy", ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 }, evs: { hp: 252, atk: 252, def: 252, spa: 252, spd: 252, spe: 252 } });
-  simpleBossStats.hp = 1060000;
+  const simpleBossStats = calculateBossStats(mewtwo);
   simpleState.setBoss(mewtwo, simpleBossStats);
   simpleState.bossMoves[0] = { name: "simple-beam", type: { name: "normal" }, damage_class: { name: "status" } };
   simpleState.startBattle();

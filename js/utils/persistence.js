@@ -1,6 +1,6 @@
 import { getItem, getMove, getPokemon } from "../api/pokeapi.js";
 import { createBuild } from "../core/battle-state.js";
-import { calculateBossStats, calculatePokemonStats, getRaidBossDefensiveStats } from "../core/stats.js";
+import { calculateBossStats, calculatePokemonStats } from "../core/stats.js";
 import { NATURES } from "../data/natures.js";
 import { emptyStages } from "../core/stages.js";
 
@@ -10,8 +10,8 @@ const prepareMove = (move) => move ? {
   customPower: move.power ?? null,
 } : null;
 
-export const SETUP_STORAGE_KEY = "myuuRaidDamageVisualizer:v2";
-const VERSION = 2;
+export const SETUP_STORAGE_KEY = "myuuRaidDamageVisualizer:v3";
+const VERSION = 3;
 
 const cloneRecord = (value, fallback) => ({ ...fallback, ...(value || {}) });
 const validSwitchMode = (value) => ["normal", "baton", "stay"].includes(value) ? value : "normal";
@@ -136,6 +136,11 @@ export class SetupPersistence extends EventTarget {
   constructor(state) {
     super();
     this.state = state;
+    try {
+      localStorage.removeItem("myuuRaidDamageVisualizer:v2");
+    } catch {
+      // Storage can be unavailable; current saves contain public state only.
+    }
     this.lastStatus = "No saved setup found";
     this.timer = null;
     this.attached = false;
@@ -326,8 +331,9 @@ export class SetupPersistence extends EventTarget {
       try {
         this.state.boss = await getPokemon(setup.boss.pokemon);
         const calculated = calculateBossStats(this.state.boss);
-        this.state.bossBaseStats = cloneRecord(setup.boss.baseStats, calculated);
-        this.state.bossStats = cloneRecord(setup.boss.currentStats, this.state.bossBaseStats);
+        const manualOverride = Boolean(setup.manualBossOverride);
+        this.state.bossBaseStats = manualOverride ? cloneRecord(setup.boss.baseStats, calculated) : calculated;
+        this.state.bossStats = manualOverride ? cloneRecord(setup.boss.currentStats, this.state.bossBaseStats) : { ...calculated };
         this.state.bossAbility = this.state.boss?.abilities?.[0]?.ability.name || "";
       } catch {
         // The default boss loader will recover if the API is temporarily unavailable.
@@ -385,19 +391,6 @@ export class SetupPersistence extends EventTarget {
         spe: this.state.bossStats ? this.state.bossStats.spe : 0,
       };
       this.state.manualBossStages = emptyStages();
-    }
-
-    if (!this.state.manualBossOverride) {
-      if (this.state.bossBaseStats) {
-        const defensive = getRaidBossDefensiveStats(this.state.bossBaseStats.hp);
-        this.state.bossBaseStats.def = defensive.def;
-        this.state.bossBaseStats.spd = defensive.spd;
-      }
-      if (this.state.bossStats) {
-        const defensive = getRaidBossDefensiveStats(this.state.bossBaseStats ? this.state.bossBaseStats.hp : this.state.bossStats.hp);
-        this.state.bossStats.def = defensive.def;
-        this.state.bossStats.spd = defensive.spd;
-      }
     }
 
     // Validate and hydrate Battle state (can be null)
@@ -462,24 +455,6 @@ export class SetupPersistence extends EventTarget {
       this.state.bossCurrentStats = battle.bossCurrentStats ? { ...battle.bossCurrentStats } : null;
       this.state.bossStatSources = battle.bossStatSources ? JSON.parse(JSON.stringify(battle.bossStatSources)) : null;
 
-      if (!this.state.manualBossOverride && this.state.bossOriginalStats && this.state.bossBaseStats) {
-        const defensive = getRaidBossDefensiveStats(this.state.bossBaseStats.hp);
-        this.state.bossOriginalStats.def = defensive.def;
-        this.state.bossOriginalStats.spd = defensive.spd;
-
-        const hasGuardSplitDef = this.state.bossStatSources?.def?.some(src => src.includes("Guard Split"));
-        const hasGuardSplitSpd = this.state.bossStatSources?.spd?.some(src => src.includes("Guard Split"));
-
-        if (!hasGuardSplitDef && this.state.bossCurrentStats) {
-          this.state.bossCurrentStats.def = defensive.def;
-          if (this.state.bossStats) this.state.bossStats.def = defensive.def;
-        }
-        if (!hasGuardSplitSpd && this.state.bossCurrentStats) {
-          this.state.bossCurrentStats.spd = defensive.spd;
-          if (this.state.bossStats) this.state.bossStats.spd = defensive.spd;
-        }
-      }
-      
       // Team stats
       this.state.team.forEach((slot, idx) => {
         if (battle.teamOriginalStats?.[idx]) slot.originalStats = { ...battle.teamOriginalStats[idx] };

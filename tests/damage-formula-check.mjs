@@ -1,5 +1,5 @@
 import { BattleState } from "../js/core/battle-state.js";
-import { calculatePokemonStats } from "../js/core/stats.js";
+import { calculateBossStats, calculatePokemonStats } from "../js/core/stats.js";
 
 console.log("Running Damage Formula and Roll Settings checks...");
 
@@ -44,8 +44,8 @@ function setupState(rollMode = "random") {
   state.team[0].moves = [{ name: "last-respects", power: 50, type: { name: "ghost" }, damage_class: { name: "physical" } }];
   state.team[0].stats = calculatePokemonStats(basculegion, state.team[0]);
 
-  const bossStats = calculatePokemonStats(mewtwo, { level: 200, nature: "hardy", ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 }, evs: { hp: 252, atk: 252, def: 252, spa: 252, spd: 252, spe: 252 } });
-  bossStats.hp = 1060000;
+  const bossStats = calculateBossStats(mewtwo);
+  bossStats.hp = 100000;
   state.setBoss(mewtwo, bossStats);
   state.bossMoves[0] = null; // Do nothing
   state.startBattle();

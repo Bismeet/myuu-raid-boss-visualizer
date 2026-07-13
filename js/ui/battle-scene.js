@@ -4,118 +4,6 @@ import { getAbilityOverride, getEffectiveAbility, getEffectiveSpeed } from "../c
 import { ABILITY_EFFECTS } from "../data/ability-effects.js";
 import { applyStage } from "../core/stages.js";
 
-function getBossTooltipHTML(state) {
-  const boss = state.boss;
-  if (!boss) return "";
-  
-  const originalTypes = boss.types.map(({ type }) => type.name).join(" / ");
-  const currentTypes = state.bossCurrentTypes.join(" / ");
-  
-  const statsKeys = ["atk", "def", "spa", "spd", "spe"];
-  const stages = state.bossStages;
-
-  const bossAbility = state.bossAbility || "";
-  const bossAbilityOverride = getAbilityOverride({ isBoss: true }, state);
-  const effectiveBossAbility = getEffectiveAbility({ isBoss: true }, state);
-  const effect = ABILITY_EFFECTS[effectiveBossAbility];
-  let abilityInfoHTML = "";
-  if (bossAbility || effectiveBossAbility) {
-    const name = effect ? effect.name : titleCase(effectiveBossAbility || bossAbility);
-    const status = effect ? effect.status : "Display Only";
-    const description = effect ? effect.description : "No special battle effect.";
-    
-    // Check if currently active:
-    let isActive = "Yes";
-    if (effectiveBossAbility === "sturdy" || effectiveBossAbility === "multiscale" || effectiveBossAbility === "shadow-shield") {
-      isActive = (state.bossHP === state.bossMaxHP) ? "Yes" : "No";
-    }
-    
-    abilityInfoHTML = `
-      <div style="margin-top: 8px; border-top: 1px solid var(--border-soft); padding-top: 6px; font-size: 9px; line-height: 1.3;">
-        <strong>Original Ability:</strong> ${bossAbility ? titleCase(bossAbility) : "None"}<br>
-        <strong>Current Ability:</strong> ${name}<br>
-        ${bossAbilityOverride ? `<strong>Changed by:</strong> Simple Beam<br>` : ""}
-        <strong>Status:</strong> <span style="color: ${status === 'Implemented' ? 'var(--success)' : (status === 'TODO' ? 'var(--danger)' : 'var(--amber)')}; font-weight:800;">${status}</span><br>
-        <strong>Effect:</strong> ${description}<br>
-        <strong>Currently active:</strong> ${isActive}
-      </div>
-    `;
-  } else {
-    abilityInfoHTML = `
-      <div style="margin-top: 8px; border-top: 1px solid var(--border-soft); padding-top: 6px; font-size: 9px; line-height: 1.3; color: var(--faint);">
-        <strong>Ability:</strong> None
-      </div>
-    `;
-  }
-
-  return `
-    <div class="stat-tooltip" style="text-align: left;">
-      <h4>${getBossDisplayName(state)} — Boss Stats</h4>
-      <div style="margin-bottom: 6px; line-height: 1.3;">
-        <strong>HP:</strong> ${state.bossHP.toLocaleString()} / ${state.bossMaxHP.toLocaleString()}<br>
-        <strong>Types:</strong><br>
-        <span style="font-size: 9px; color: var(--muted);">Original: ${originalTypes}</span><br>
-        <span style="font-size: 10px; color: var(--cyan); font-weight: 800;">Current: ${currentTypes}</span>
-      </div>
-      
-      <table style="width: 100%; font-size: 10px; margin-bottom: 8px; border-collapse: collapse; min-width: 0;">
-        <thead>
-          <tr style="border-bottom: 1px solid var(--border-soft); text-align: left; font-size: 8px; color: var(--faint);">
-            <th style="padding: 2px;">Stat</th>
-            <th style="padding: 2px;">Orig</th>
-            <th style="padding: 2px;">Stage</th>
-            <th style="padding: 2px;">Eff</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${statsKeys.map(k => {
-            const orig = state.bossOriginalStats ? state.bossOriginalStats[k] : (state.bossStats ? state.bossStats[k] : 0);
-            const effVal = (k === "spe")
-              ? getEffectiveSpeed({ isBoss: true, name: boss.name }, state)
-              : (state.bossCurrentStats ? state.bossCurrentStats[k] : (state.bossStats ? state.bossStats[k] : 0));
-            const stage = stages[k] || 0;
-            const sign = stage >= 0 ? `+${stage}` : `${stage}`;
-            const eff = (k === "spe") ? effVal : applyStage(effVal, stage);
-            return `
-              <tr style="border-bottom: 1px dashed rgba(255,255,255,0.05);">
-                <td style="padding: 2px;"><strong>${k.toUpperCase()}</strong></td>
-                <td style="padding: 2px;">${orig}</td>
-                <td style="padding: 2px; color: ${stage > 0 ? 'var(--success)' : stage < 0 ? 'var(--danger)' : 'var(--muted)'};">${sign}</td>
-                <td style="padding: 2px;"><strong style="color: var(--amber);">${eff}</strong></td>
-              </tr>
-            `;
-          }).join("")}
-        </tbody>
-      </table>
-      
-      <div style="font-size: 9px; line-height: 1.3;">
-        <strong>Stat Modifiers:</strong><br>
-        ${statsKeys.map(k => {
-          const sources = state.bossStatSources ? state.bossStatSources[k] : [];
-          if (!sources || sources.length <= 1) return "";
-          return `<div style="color: var(--muted); margin-bottom: 2px;">• <strong>${k.toUpperCase()}:</strong> ${sources.slice(1).join(", ")}</div>`;
-        }).filter(Boolean).join("") || "<span style='color: var(--faint);'>None</span>"}
-      </div>
-
-      <div style="font-size: 9px; line-height: 1.3; margin-top: 6px;">
-        <strong>Stage Modifiers:</strong><br>
-        ${statsKeys.map(k => {
-          const stage = stages[k] || 0;
-          if (stage === 0) return "";
-          const sign = stage >= 0 ? `+${stage}` : `${stage}`;
-          let note = "";
-          if (k === "def" && stage < 0) note = " (Defense stage changed by Screech/debuffs)";
-          if (k === "spd" && stage < 0) note = " (Sp. Defense stage changed by debuffs)";
-          if (k === "atk" && stage < 0) note = " (Attack stage changed by debuffs)";
-          if (k === "spe" && stage < 0) note = " (Speed stage changed by debuffs)";
-          return `<div style="color: var(--muted); margin-bottom: 2px;">• <strong>${k.toUpperCase()}:</strong> ${sign}${note}</div>`;
-        }).filter(Boolean).join("") || "<span style='color: var(--faint);'>None</span>"}
-      </div>
-      ${abilityInfoHTML}
-    </div>
-  `;
-}
-
 function getPlayerTooltipHTML(state) {
   const activeMon = state.team[state.activeSlot];
   if (!activeMon || !activeMon.pokemon) return "";
@@ -513,7 +401,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
       if (row) {
         currentTurnLabel = `Turn ${row.turn}`;
         calloutAction = titleCase(row.action);
-        calloutDetail = `${row.normalLabel} damage`;
+        calloutDetail = `${row.damageLabel} damage`;
       }
 
       this.root.innerHTML = `
@@ -758,7 +646,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
             <div class="battle-callout" id="battle-callout"><strong>VS</strong><span>Turn ${this.state.currentTurn}</span></div>
             
             <!-- Defender side -->
-            <div class="combatant defender tooltip-anchor" id="boss-combatant" style="display:grid; justify-items:end;">
+            <div class="combatant defender" id="boss-combatant" style="display:grid; justify-items:end;">
               <div class="boss-health" style="position:static; display:grid; gap:2px; margin-bottom:6px; min-width:140px; text-align:right;">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                   <strong style="font-size:11px;">${getBossDisplayName(this.state)}</strong>
@@ -1281,11 +1169,11 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     const attacker = this.root.querySelector("#attacker-sprite");
     const boss = this.root.querySelector("#boss-sprite");
     const float = this.root.querySelector("#damage-float");
-    if (row.normal.max > 0) {
+    if (row.damageMax > 0) {
       attacker?.classList.add("lunge");
       boss?.classList.add("hit");
       if (float) {
-        float.textContent = `−${Math.round((row.normal.min + row.normal.max) / 2).toLocaleString()}`;
+        float.textContent = `−${Math.round((row.damageMin + row.damageMax) / 2).toLocaleString()}`;
         float.classList.add("show");
       }
     }
@@ -1295,7 +1183,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
   copy() {
     const lines = [
       `Myuu Raid — ${this.state.boss ? displayName(this.state.boss.name) : "Boss"}`,
-      ...this.state.results.map((row) => `T${row.turn} ${displayName(row.pokemon)} — ${titleCase(row.action)} | ${row.normalLabel} normal | ${row.criticalLabel} crit`),
+      ...this.state.results.map((row) => `T${row.turn} ${displayName(row.pokemon)} — ${titleCase(row.action)} | ${row.damageLabel} damage`),
     ];
     copyText(lines.join("\n"));
     const button = this.root.querySelector("#simulate-all") || this.root.querySelector("#copy-summary");

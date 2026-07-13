@@ -1,5 +1,5 @@
 import { BattleState } from "../js/core/battle-state.js";
-import { calculatePokemonStats } from "../js/core/stats.js";
+import { calculateBossStats, calculatePokemonStats } from "../js/core/stats.js";
 
 console.log("Running New Battle behavior checks...");
 
@@ -38,8 +38,7 @@ state.team[0].pokemon = abra;
 state.team[0].item = "custap-berry";
 state.team[0].stats = calculatePokemonStats(abra, state.team[0]);
 
-const bossStats = calculatePokemonStats(mewtwo, { level: 200, nature: "hardy", ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 }, evs: { hp: 252, atk: 252, def: 252, spa: 252, spd: 252, spe: 252 } });
-bossStats.hp = 1060000;
+const bossStats = calculateBossStats(mewtwo);
 state.setBoss(mewtwo, bossStats);
 
 state.startBattle();
@@ -74,7 +73,7 @@ if (!state.battleActive) {
 if (state.currentTurn !== 1) {
   throw new Error("New Battle did not reset turn counter to 1.");
 }
-if (state.bossHP !== 1060000) {
+if (state.bossHP !== bossStats.hp) {
   throw new Error("New Battle did not reset boss HP to max.");
 }
 if (state.teamHP[0] !== state.team[0].stats.hp) {

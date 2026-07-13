@@ -1,6 +1,5 @@
 import { compactNumber, displayName, titleCase } from "../utils/format.js";
 
-const effectLabel = (value) => value === 0 ? "Immune" : value > 1 ? `${value}× Super` : value < 1 ? `${value}× Resist` : "1×";
 const publicNotes = (notes = []) => notes.filter((note) => !/(?:Defense|Sp\. Defense|Attack|Sp\. Attack|Speed|HP)\s*(?:changed|stage|:).*?(?:→|->|\d)/i.test(note));
 
 export class Summary {
@@ -115,15 +114,11 @@ export class Summary {
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Turn</th><th>Active Pokémon</th><th>Move</th><th>Type</th><th>Category</th><th>Original power</th><th>Used power</th><th>Held item</th><th>Item modifier notes</th><th>Effect</th><th>Normal range</th><th>Critical range</th><th>Notes</th></tr></thead>
+            <thead><tr><th>Turn</th><th>Active Pokémon</th><th>Move</th><th>Damage range</th><th>Boss HP</th></tr></thead>
             <tbody>${rows.length ? rows.map((row) => `<tr>
               <td>${row.turn}</td><td>${displayName(row.pokemon)}</td><td>${titleCase(row.moveName)}</td>
-              <td><span class="type-badge type-${row.moveType}">${row.moveType}</span></td><td>${titleCase(row.category)}</td>
-              <td>${row.originalPower}</td><td><strong>${row.usedPower}</strong></td><td>${titleCase(row.heldItem)}</td><td>${row.itemNotes}</td>
-              <td>${effectLabel(row.effectiveness)}</td><td>${row.normalLabel}<small>${row.normal.percent[0].toFixed(3)}–${row.normal.percent[1].toFixed(3)}%</small></td>
-              <td>${row.criticalLabel}<small>${row.critical.percent[0].toFixed(3)}–${row.critical.percent[1].toFixed(3)}%</small></td>
-              <td>${row.note}</td>
-            </tr>`).join("") : `<tr><td colspan="13" class="empty-table">Start a battle, then execute turns to generate the battle log.</td></tr>`}</tbody>
+              <td><strong>${row.damageLabel}</strong></td><td>${row.hp.toLocaleString()}</td>
+            </tr>`).join("") : `<tr><td colspan="5" class="empty-table">Start a battle, then execute turns to generate the battle log.</td></tr>`}</tbody>
           </table>
         </div>
       </section>`;

@@ -9,7 +9,7 @@ globalThis.localStorage = {
 };
 
 async function runTests() {
-  console.log("Running Persistence v2 tests...");
+  console.log("Running Persistence v3 tests...");
   
   const persistence = new SetupPersistence(new BattleState());
 
@@ -39,7 +39,7 @@ async function runTests() {
     if (!persistence.save(true)) throw new Error("Save failed.");
     const saved = JSON.parse(localStorage.getItem(SETUP_STORAGE_KEY));
 
-    if (saved.version !== 2) throw new Error("Expected version 2");
+    if (saved.version !== 3) throw new Error("Expected version 3");
     if (!saved.setup) throw new Error("Missing setup section");
     if (saved.setup.boss.pokemon !== "lugia") throw new Error("Boss pokemon missing");
     if (saved.setup.team[0].moves[0].customPower !== 300) throw new Error("Team move customPower missing");
@@ -156,7 +156,7 @@ async function runTests() {
   persistence.clear();
   if (localStorage.getItem(SETUP_STORAGE_KEY) !== null) throw new Error("Clear failed.");
   
-  console.log("All persistence v2 tests passed successfully!");
+  console.log("All persistence v3 tests passed successfully!");
 }
 
 runTests().catch(e => {

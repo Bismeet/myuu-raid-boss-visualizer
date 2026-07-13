@@ -1,5 +1,5 @@
 import { BattleState } from "../js/core/battle-state.js";
-import { calculatePokemonStats } from "../js/core/stats.js";
+import { calculateBossStats, calculatePokemonStats } from "../js/core/stats.js";
 import { damageRolls } from "../js/core/damage.js";
 import { getEffectiveSpeed } from "../js/core/battle-state.js";
 
@@ -334,9 +334,7 @@ async function testSturdyAndUnburden() {
   state.team[0].moves = [{ name: "tackle", power: 40, type: { name: "normal" }, damage_class: { name: "physical" } }];
   state.team[0].stats = calculatePokemonStats(shieldon, state.team[0]);
 
-  // Mewtwo stats for test
-  const bossStats = calculatePokemonStats(mewtwo, { level: 200, nature: "hardy", ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 }, evs: { hp: 252, atk: 252, def: 252, spa: 252, spd: 252, spe: 252 } });
-  bossStats.hp = 1060000;
+  const bossStats = calculateBossStats(mewtwo);
   state.setBoss(mewtwo, bossStats);
   state.bossMoves[0] = { name: "close-combat", power: 120, type: { name: "fighting" }, damage_class: { name: "physical" } };
 

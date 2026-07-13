@@ -1,0 +1,8 @@
+{
+  "name": "myuu-raid-calculator",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/security-check.mjs"
+  }
+}

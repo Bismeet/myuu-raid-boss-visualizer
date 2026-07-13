@@ -20,24 +20,16 @@ export function calculatePokemonStats(pokemon, build) {
   ]));
 }
 
-export function getRaidBossDefensiveStats(maxHp) {
-  const defensiveValue = maxHp >= 1_000_000 ? 6300 : 3150;
-  return {
-    def: defensiveValue,
-    spd: defensiveValue
-  };
-}
-
 export function calculateBossStats(pokemon) {
+  // Public planner fallback only; accurate private raid results come from /api/quick-calc.
   const bases = baseStats(pokemon);
-  const hp = bases.hp * 10000;
-  const defensive = getRaidBossDefensiveStats(hp);
+  const level = 100;
   return {
-    hp,
-    atk: calculateStat(bases.atk, 31, 0, 200),
-    def: defensive.def,
-    spa: calculateStat(bases.spa, 31, 0, 200),
-    spd: defensive.spd,
-    spe: calculateStat(bases.spe, 31, 0, 200),
+    hp: calculateStat(bases.hp, 31, 0, level, 1, true),
+    atk: calculateStat(bases.atk, 31, 0, level),
+    def: calculateStat(bases.def, 31, 0, level),
+    spa: calculateStat(bases.spa, 31, 0, level),
+    spd: calculateStat(bases.spd, 31, 0, level),
+    spe: calculateStat(bases.spe, 31, 0, level),
   };
 }

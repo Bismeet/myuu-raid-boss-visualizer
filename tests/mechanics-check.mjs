@@ -108,18 +108,21 @@ const noBandRolls = damageRolls({
 });
 
 if (RANDOM_ROLLS.length !== 16 || rolls.rolls.length !== 16) throw new Error("Expected 16 damage rolls.");
-if (calculateStat(100, 31, 0, 200, 1, true) !== 672) throw new Error("Level 200 HP formula mismatch.");
+if (calculateStat(100, 31, 0, 100, 1, true) !== 341) throw new Error("Public HP formula mismatch.");
 if (state.bossStats.def !== 618) throw new Error("Guard Split did not persist.");
-if (rows.length !== 2 || rows[1].normal.max <= 0) throw new Error("Simulator did not produce attack damage.");
+if (rows.length !== 2 || rows[1].damageMax <= 0) throw new Error("Simulator did not produce attack damage.");
 if (charcoalRolls.max <= noItemRolls.max) throw new Error("Type-boosting item modifier failed.");
 if (scopeLensRolls.critStage !== 1) throw new Error("Critical-stage item modifier failed.");
 if (customPowerRolls.max <= basePowerRolls.max * 5) throw new Error("Custom move power was not used.");
 if (choiceBandRolls.max <= noBandRolls.max) throw new Error("Choice Band attack-stat modifier failed.");
-if (rows[1].originalPower !== 90 || rows[1].usedPower !== 90 || rows[1].heldItem !== "life-orb") throw new Error("Summary power/item fields failed.");
+const expectedRowFields = ["action", "damageLabel", "damageMax", "damageMin", "hp", "moveName", "pokemon", "slot", "turn"];
+if (Object.keys(rows[1]).sort().join(",") !== expectedRowFields.sort().join(",")) {
+  throw new Error(`Simulator row exposed unexpected fields: ${Object.keys(rows[1]).join(", ")}`);
+}
 
 console.log("Mechanics checks passed:", {
   rolls: RANDOM_ROLLS.length,
-  level200Hp: 672,
+  publicHp: 341,
   guardSplitDefense: state.bossStats.def,
-  damage: rows[1].normalLabel,
+  damage: rows[1].damageLabel,
 });

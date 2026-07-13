@@ -160,7 +160,7 @@ if (state.bossCurrentTypes.length !== 1 || state.bossCurrentTypes[0] !== "psychi
 }
 console.log("Magic Powder changed boss type to psychic successfully.");
 
-// 6.5.4 Boss uses Soak on player
+// Boss uses Soak on player
 state.bossMoves[1] = { name: "soak", type: { name: "water" }, damage_class: { name: "status" } };
 state.executeTurn("use-move", 3, 0, "use-move", 1);
 if (state.teamCurrentTypes[0].length !== 1 || state.teamCurrentTypes[0][0] !== "water") {
