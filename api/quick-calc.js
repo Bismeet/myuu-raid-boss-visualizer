@@ -68,7 +68,7 @@ function applyPublicSplitInputs(stats, order, suppliedStats) {
     const splitter = suppliedStats?.[key];
     const def = Number(splitter?.def);
     const spd = Number(splitter?.spd);
-    if (!Number.isFinite(def) || !Number.isFinite(spd) || def < 1 || spd < 1) {
+    if (!Number.isFinite(def) || !Number.isFinite(spd) || def < 1 || spd < 1 || def > 999 || spd > 999) {
       throw new Error("INVALID_SPLITTER_INPUT");
     }
     stats.def = Math.floor((stats.def + def) / 2);

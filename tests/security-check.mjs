@@ -124,6 +124,31 @@ try {
   if (Object.keys(success.payload).sort().join(",") !== "damageRange,summary") {
     throw new Error(`Server response exposed unexpected fields: ${Object.keys(success.payload).join(", ")}`);
   }
+
+  const splitSuccess = responseRecorder();
+  await quickCalcHandler({
+    method: "POST",
+    body: {
+      boss: "mew",
+      attacker: "mew",
+      move: "tackle",
+      level: 100,
+      nature: "hardy",
+      atkIv: 31,
+      spaIv: 31,
+      hitCount: 1,
+      typeChanges: {},
+      guardSplitOrder: ["custom"],
+      splitterStats: { custom: { def: 1, spd: 1 } },
+    },
+  }, splitSuccess);
+  const rangeMinimum = (range) => Number(String(range).split("-")[0].replaceAll(",", "").trim());
+  if (splitSuccess.statusCode !== 200 || rangeMinimum(splitSuccess.payload?.damageRange) <= rangeMinimum(success.payload.damageRange)) {
+    throw new Error("Server Guard Split inputs did not affect the damage result.");
+  }
+  if (Object.keys(splitSuccess.payload).sort().join(",") !== "damageRange,summary") {
+    throw new Error("Guard Split response exposed server calculation internals.");
+  }
 } finally {
   console.error = originalConsoleError;
   globalThis.fetch = originalFetch;

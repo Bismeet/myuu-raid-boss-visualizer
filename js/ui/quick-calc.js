@@ -17,8 +17,17 @@ const CURATED_ITEMS = [
 ];
 const RAID_MOVES = [
   "last-respects", "pin-missile", "icicle-spear", "screech", "metal-sound", "fake-tears",
-  "stored-power", "power-trip", "rage-fist", "collision-course", "astral-barrage",
+  "guard-split", "stored-power", "power-trip", "rage-fist", "collision-course", "astral-barrage",
 ];
+export const QUICK_CALC_GUARD_SPLIT_USERS = {
+  abra: { name: "Abra", def: 5, spd: 5 },
+  elgyem: { name: "Elgyem", def: 6, spd: 6 },
+  shuckle: { name: "Shuckle", def: 20, spd: 20 },
+  shieldon: { name: "Shieldon", def: 7, spd: 7 },
+  carbink: { name: "Carbink", def: 7, spd: 7 },
+  custom: { name: "Custom", def: 300, spd: 300 },
+};
+const GUARD_SPLITTER_KEYS = Object.keys(QUICK_CALC_GUARD_SPLIT_USERS);
 
 export function resolveQuickCalcBossTypes({
   bossTypes = [],
@@ -40,6 +49,46 @@ export function resolveQuickCalcBossTypes({
   if (forestsCurse && !types.includes("grass")) types = [...types, "grass"];
   return types;
 }
+
+export function defaultQuickCalcSplitterStats() {
+  return Object.fromEntries(Object.entries(QUICK_CALC_GUARD_SPLIT_USERS).map(([key, splitter]) => [
+    key,
+    { def: splitter.def, spd: splitter.spd },
+  ]));
+}
+
+export function normalizeGuardSplitOrder(order) {
+  if (!Array.isArray(order)) return [];
+  return order.slice(0, 10).filter((key) => GUARD_SPLITTER_KEYS.includes(key));
+}
+
+function normalizeSplitterStat(value, fallback) {
+  if (value === "" || value === null || value === undefined) return fallback;
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.max(1, Math.min(999, Math.round(numericValue)));
+}
+
+export function normalizeQuickCalcSplitterStats(splitterStats = {}) {
+  return Object.fromEntries(Object.entries(QUICK_CALC_GUARD_SPLIT_USERS).map(([key, defaults]) => [
+    key,
+    {
+      def: normalizeSplitterStat(splitterStats?.[key]?.def, defaults.def),
+      spd: normalizeSplitterStat(splitterStats?.[key]?.spd, defaults.spd),
+    },
+  ]));
+}
+
+export function resolveQuickCalcGuardChain(order, splitterStats = {}) {
+  const normalizedStats = normalizeQuickCalcSplitterStats(splitterStats);
+  return normalizeGuardSplitOrder(order).map((key) => ({
+    key,
+    name: QUICK_CALC_GUARD_SPLIT_USERS[key].name,
+    def: normalizedStats[key].def,
+    spd: normalizedStats[key].spd,
+  }));
+}
+
 export const QUICK_CALC_PRESETS = {
   basculegion: {
     label: "Basculegion Last Respects",
@@ -88,6 +137,9 @@ export const QUICK_CALC_PRESETS = {
     spaEv: 252,
     spaStage: 6,
   },
+  shuckle: { label: "Shuckle Guard Split", guardSplitOrder: ["shuckle"] },
+  elgyem: { label: "Elgyem Guard Split", guardSplitOrder: ["elgyem"] },
+  shieldon: { label: "Shieldon Screech", guardSplitOrder: ["shieldon"], screechCount: 3 },
 };
 
 const escapeHtml = (value = "") => String(value)
@@ -169,6 +221,8 @@ export class QuickCalc {
       atkStage: 0,
       spaStage: 0,
       critStage: 0,
+      guardSplitOrder: [],
+      splitterStats: defaultQuickCalcSplitterStats(),
       screechCount: 0,
       defenseStage: 0,
       simpleDefense: false,
@@ -287,6 +341,18 @@ export class QuickCalc {
     return { build: this.attackerBuild(), move: this.selectedMove() };
   }
 
+  guardChain() {
+    return resolveQuickCalcGuardChain(this.cfg.guardSplitOrder, this.cfg.splitterStats);
+  }
+
+  guardSplitPayload() {
+    const chain = this.guardChain();
+    return {
+      guardSplitOrder: chain.map(({ key }) => key),
+      splitterStats: Object.fromEntries(chain.map(({ key, def, spd }) => [key, { def, spd }])),
+    };
+  }
+
   requestPayload() {
     return {
       boss: this.cfg.boss?.name || "",
@@ -305,6 +371,7 @@ export class QuickCalc {
       atkStage: this.cfg.atkStage,
       spaStage: this.cfg.spaStage,
       critStage: this.cfg.critStage,
+      ...this.guardSplitPayload(),
       screechCount: this.cfg.screechCount,
       defenseStage: this.cfg.defenseStage,
       simpleDefense: this.cfg.simpleDefense,
@@ -484,10 +551,45 @@ export class QuickCalc {
   }
 
   setupPanel(calc) {
+    const guardChain = this.guardChain();
     return `
       <section class="quick-card quick-wide" aria-labelledby="quick-setup-title">
         <div class="quick-card-title compact"><div><span class="eyebrow">Battle modifiers</span><h2 id="quick-setup-title">Setup</h2></div></div>
         <div class="quick-setup-grid">
+          <div class="quick-subpanel">
+            <div class="quick-guard-stats-heading">
+              <h3>Guard Splitter Stats</h3>
+              <button type="button" class="button quick-guard-reset" data-reset-splitter-stats>Reset Splitter Stats</button>
+            </div>
+            <p class="quick-guard-help">Choose or customize the Defense and Sp. Defense each Guard Split user contributes. Private boss defenses stay on the server.</p>
+            <div class="quick-guard-stats" aria-label="Guard Splitter Stats">
+              ${Object.entries(QUICK_CALC_GUARD_SPLIT_USERS).map(([key, splitter]) => `
+                <div class="quick-guard-stat-row">
+                  <strong>${escapeHtml(splitter.name)}</strong>
+                  <label><span>Def</span><input type="number" inputmode="numeric" min="1" max="999" step="1" data-splitter="${key}" data-splitter-stat="def" aria-label="${escapeHtml(splitter.name)} Defense" value="${escapeHtml(this.cfg.splitterStats?.[key]?.def ?? splitter.def)}"></label>
+                  <label><span>SpD</span><input type="number" inputmode="numeric" min="1" max="999" step="1" data-splitter="${key}" data-splitter-stat="spd" aria-label="${escapeHtml(splitter.name)} Special Defense" value="${escapeHtml(this.cfg.splitterStats?.[key]?.spd ?? splitter.spd)}"></label>
+                </div>`).join("")}
+            </div>
+            <h3 class="quick-guard-order-title">Guard Split Order</h3>
+            <p class="quick-guard-help">Add users and arrange them in the exact sequential order.</p>
+            <div class="quick-guard-add">
+              <label><span>Add splitter</span><select data-guard-add-select>
+                ${GUARD_SPLITTER_KEYS.map((key) => `<option value="${key}">${escapeHtml(QUICK_CALC_GUARD_SPLIT_USERS[key].name)}</option>`).join("")}
+              </select></label>
+              <button type="button" class="button" data-add-guard>Add to chain</button>
+            </div>
+            ${guardChain.length ? `<ol class="quick-guard-chain" aria-label="Selected Guard Split order">
+              ${guardChain.map((user, index) => `<li data-guard-row="${index}">
+                <span class="quick-guard-position" aria-hidden="true">${index + 1}</span>
+                <span class="quick-guard-name"><strong>${escapeHtml(user.name)}</strong><small>Def ${user.def} · SpD ${user.spd}</small></span>
+                <span class="quick-guard-actions">
+                  <button type="button" data-move-guard="${index}" data-guard-direction="up" aria-label="Move ${escapeHtml(user.name)} up" title="Move up" ${index === 0 ? "disabled" : ""}>↑</button>
+                  <button type="button" data-move-guard="${index}" data-guard-direction="down" aria-label="Move ${escapeHtml(user.name)} down" title="Move down" ${index === guardChain.length - 1 ? "disabled" : ""}>↓</button>
+                  <button type="button" class="quick-guard-remove" data-remove-guard="${index}" aria-label="Remove ${escapeHtml(user.name)} from Guard Split order">Remove</button>
+                </span>
+              </li>`).join("")}
+            </ol>` : `<p class="quick-guard-empty">No Guard Split users added.</p>`}
+          </div>
           <div class="quick-subpanel">
             <h3>Screech / Defense Drops</h3>
             <div class="quick-fields three">
@@ -582,7 +684,10 @@ export class QuickCalc {
 
     this.root.addEventListener("input", (event) => {
       const field = event.target;
-      if (field.matches("[data-cfg]")) {
+      if (field.matches("[data-splitter-stat]")) {
+        this.updateSplitterStatField(field);
+        this.queueServerCalculation();
+      } else if (field.matches("[data-cfg]")) {
         this.updateConfigField(field);
         this.queueServerCalculation();
       } else if (field.matches("[data-boss-search]")) {
@@ -606,7 +711,11 @@ export class QuickCalc {
 
     this.root.addEventListener("change", (event) => {
       const field = event.target;
-      if (field.matches("[data-cfg]")) {
+      if (field.matches("[data-splitter-stat]")) {
+        this.normalizeSplitterStatField(field);
+        this.render();
+        this.queueServerCalculation();
+      } else if (field.matches("[data-cfg]")) {
         this.updateConfigField(field);
         if (field.type === "number") this.normalizeConfigField(field);
         if (field.type === "number") this.renderResultsOnly();
@@ -641,6 +750,10 @@ export class QuickCalc {
         this.normalizeConfigField(field);
         this.render();
         this.queueServerCalculation();
+      } else if (field.matches("[data-splitter-stat]")) {
+        this.normalizeSplitterStatField(field);
+        this.render();
+        this.queueServerCalculation();
       }
     }, true);
 
@@ -651,6 +764,13 @@ export class QuickCalc {
       if (button.matches("[data-pick-boss]")) this.loadBoss(button.dataset.pickBoss);
       else if (button.matches("[data-pick-attacker]")) this.loadAttacker(button.dataset.pickAttacker);
       else if (button.matches("[data-pick-move]")) this.loadMove(button.dataset.pickMove);
+      else if (button.matches("[data-add-guard]")) {
+        const select = this.root.querySelector("[data-guard-add-select]");
+        this.addGuardSplitter(select?.value);
+      }
+      else if (button.matches("[data-move-guard]")) this.moveGuardSplitter(Number(button.dataset.moveGuard), button.dataset.guardDirection);
+      else if (button.matches("[data-remove-guard]")) this.removeGuardSplitter(Number(button.dataset.removeGuard));
+      else if (button.matches("[data-reset-splitter-stats]")) this.resetSplitterStats();
       else if (button.matches("[data-pick-item]")) {
         this.cfg.item = button.dataset.pickItem;
         this.itemQuery = "";
@@ -676,6 +796,64 @@ export class QuickCalc {
 
   updateConfigField(field) {
     this.cfg[field.dataset.cfg] = field.value;
+  }
+
+  updateSplitterStatField(field) {
+    const key = field.dataset.splitter;
+    const stat = field.dataset.splitterStat;
+    const defaults = QUICK_CALC_GUARD_SPLIT_USERS[key];
+    if (!defaults || !["def", "spd"].includes(stat)) return;
+    this.cfg.splitterStats ??= defaultQuickCalcSplitterStats();
+    this.cfg.splitterStats[key] ??= { def: defaults.def, spd: defaults.spd };
+    this.cfg.splitterStats[key][stat] = field.value;
+  }
+
+  normalizeSplitterStatField(field) {
+    const key = field.dataset.splitter;
+    const stat = field.dataset.splitterStat;
+    const defaults = QUICK_CALC_GUARD_SPLIT_USERS[key];
+    if (!defaults || !["def", "spd"].includes(stat)) return;
+    const value = normalizeSplitterStat(field.value, defaults[stat]);
+    this.cfg.splitterStats ??= defaultQuickCalcSplitterStats();
+    this.cfg.splitterStats[key] ??= { def: defaults.def, spd: defaults.spd };
+    this.cfg.splitterStats[key][stat] = value;
+    field.value = String(value);
+  }
+
+  resetSplitterStats() {
+    this.cfg.splitterStats = defaultQuickCalcSplitterStats();
+    this.status = "Splitter stats reset to defaults";
+    this.render();
+    this.queueServerCalculation();
+  }
+
+  commitGuardSplitOrder(message) {
+    this.cfg.guardSplitOrder = normalizeGuardSplitOrder(this.cfg.guardSplitOrder);
+    this.status = message;
+    this.render();
+    this.queueServerCalculation();
+  }
+
+  addGuardSplitter(key) {
+    if (!GUARD_SPLITTER_KEYS.includes(key)) return;
+    this.cfg.guardSplitOrder = [...this.cfg.guardSplitOrder, key];
+    this.commitGuardSplitOrder(`${QUICK_CALC_GUARD_SPLIT_USERS[key].name} added to Guard Split order`);
+  }
+
+  removeGuardSplitter(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= this.cfg.guardSplitOrder.length) return;
+    const [key] = this.cfg.guardSplitOrder.splice(index, 1);
+    this.commitGuardSplitOrder(`${QUICK_CALC_GUARD_SPLIT_USERS[key]?.name || "Splitter"} removed from Guard Split order`);
+  }
+
+  moveGuardSplitter(index, direction) {
+    const order = [...this.cfg.guardSplitOrder];
+    const nextIndex = direction === "up" ? index - 1 : index + 1;
+    if (!Number.isInteger(index) || index < 0 || nextIndex < 0 || nextIndex >= order.length) return;
+    [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+    this.cfg.guardSplitOrder = order;
+    const key = order[nextIndex];
+    this.commitGuardSplitOrder(`${QUICK_CALC_GUARD_SPLIT_USERS[key]?.name || "Splitter"} moved ${direction}`);
   }
 
   normalizeConfigField(field) {
@@ -860,6 +1038,8 @@ export class QuickCalc {
     Object.entries(preset).forEach(([field, value]) => {
       if (!["label", "boss", "attacker", "move"].includes(field)) this.cfg[field] = Array.isArray(value) ? [...value] : value;
     });
+    this.cfg.guardSplitOrder = normalizeGuardSplitOrder(this.cfg.guardSplitOrder);
+    this.cfg.splitterStats = normalizeQuickCalcSplitterStats(this.cfg.splitterStats);
     this.status = `Applied preset: ${preset.label}`;
     if (rerender) {
       this.render();
