@@ -88,7 +88,7 @@ state.startBattle();
 
 // Attempting to execute with empty slot move index (should fail)
 try {
-  state.executeTurn("use-move", 1, 0, "do-nothing", 0);
+  await state.executeTurn("use-move", 1, 0, "do-nothing", 0);
   throw new Error("Should have thrown error for empty move slot.");
 } catch (err) {
   if (!err.message.includes("No move selected")) {
@@ -101,7 +101,7 @@ console.log("Verified validation: block empty move execution.");
 // Setup Leftovers
 state.team[0].item = "leftovers";
 state.teamHP[0] = 100; // Damaged HP
-state.executeTurn("use-move", 0, 0, "do-nothing", 0);
+await state.executeTurn("use-move", 0, 0, "do-nothing", 0);
 
 const leftoversHealLog = state.battleLog.at(-1).notes.find(n => n.includes("Leftovers"));
 if (!leftoversHealLog) {
@@ -114,7 +114,7 @@ state.resetBattle();
 state.startBattle();
 state.team[0].item = "shell-bell";
 state.teamHP[0] = 100; // Damaged HP
-state.executeTurn("use-move", 0, 0, "do-nothing", 0);
+await state.executeTurn("use-move", 0, 0, "do-nothing", 0);
 
 const shellBellLog = state.battleLog.at(-1).notes.find(n => n.includes("Shell Bell"));
 if (!shellBellLog) {
@@ -128,7 +128,7 @@ state.startBattle();
 state.team[0].item = "sitrus-berry";
 state.teamHP[0] = Math.floor(state.team[0].stats.hp / 3); // Under 50% HP
 const hpBeforeSitrus = state.teamHP[0];
-state.executeTurn("use-move", 0, 0, "do-nothing", 0);
+await state.executeTurn("use-move", 0, 0, "do-nothing", 0);
 
 const sitrusLog = state.battleLog.at(-1).notes.find(n => n.includes("Sitrus Berry"));
 if (!sitrusLog) {
@@ -147,7 +147,7 @@ state.resetBattle();
 state.startBattle();
 state.team[0].item = "oran-berry";
 state.teamHP[0] = Math.floor(state.team[0].stats.hp / 3); // Under 50% HP
-state.executeTurn("use-move", 0, 0, "do-nothing", 0);
+await state.executeTurn("use-move", 0, 0, "do-nothing", 0);
 
 const oranLog = state.battleLog.at(-1).notes.find(n => n.includes("Oran Berry"));
 if (!oranLog) {
@@ -165,7 +165,7 @@ console.log(`Verified Oran Berry consumption: ${oranLog}`);
 state.resetBattle();
 state.startBattle();
 state.team[0].item = "normal-gem";
-state.executeTurn("use-move", 0, 0, "do-nothing", 0);
+await state.executeTurn("use-move", 0, 0, "do-nothing", 0);
 const gemLog = state.battleLog.at(-1).notes.find(n => n.includes("Normal Gem"));
 if (!gemLog) {
   throw new Error("Normal Gem consumption was not logged.");
@@ -183,7 +183,7 @@ state.resetBattle();
 state.startBattle();
 state.team[0].item = "focus-sash";
 // Mewtwo attacks back and does massive damage
-state.executeTurn("use-move", 0, 0, "use-move", 0);
+await state.executeTurn("use-move", 0, 0, "use-move", 0);
 
 const sashLog = state.battleLog.at(-1).notes.find(n => n.includes("Focus Sash"));
 if (!sashLog) {

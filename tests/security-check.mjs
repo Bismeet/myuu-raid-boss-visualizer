@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import quickCalcHandler from "../api/quick-calc.js";
+import battleDamageHandler from "../api/battle-damage.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ignoredDirectories = new Set([".git", ".agents", "assets", "node_modules"]);
@@ -151,6 +152,39 @@ try {
   }
   if (Object.keys(splitSuccess.payload).sort().join(",") !== "actualDamageRange,myuuDamageRange,summary") {
     throw new Error("Guard Split response exposed server calculation internals.");
+  }
+
+  const battleSuccess = responseRecorder();
+  await battleDamageHandler({
+    method: "POST",
+    body: {
+      direction: "player-to-boss",
+      boss: "mew",
+      move: "tackle",
+      hitCount: 1,
+      activeSlot: 0,
+      teamBaseStats: [{ atk: 100, def: 100, spa: 100, spd: 100, spe: 100 }],
+      splitEvents: [{ kind: "guard-split", slot: 0 }],
+      player: {
+        pokemon: "mew",
+        level: 100,
+        ability: "",
+        item: "",
+        types: ["normal"],
+        stages: { atk: 0 },
+        atFullHp: true,
+      },
+      bossState: {
+        ability: "pressure",
+        types: ["normal"],
+        stages: { def: -2 },
+        atFullHp: true,
+      },
+    },
+  }, battleSuccess);
+  const safeBattleKeys = "effectiveness,myuuAverage,myuuRolls,rolls";
+  if (battleSuccess.statusCode !== 200 || Object.keys(battleSuccess.payload).sort().join(",") !== safeBattleKeys) {
+    throw new Error("Battle damage response exposed server calculation internals.");
   }
 } finally {
   console.error = originalConsoleError;

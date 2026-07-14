@@ -1,15 +1,14 @@
 import { getItemIndex, getMove, getMoveIndex, getPokemon, searchPokemon } from "../api/pokeapi.js";
 import { BOSSES, searchBosses } from "../data/bosses.js";
 import { NATURES, natureDropdownLabel } from "../data/natures.js";
-import { applyStage, emptyStages } from "../core/stages.js";
+import { applyStage, emptyStages, resolveDynamicMovePower } from "../core/stages.js";
 import { calculatePokemonStats } from "../core/stats.js";
+import { POKEMON_TYPES, resolveAttackerTypes, resolveDefenderTypes, resolveMoveType, withMoveType } from "../core/type-mechanics.js";
+import { typeEffectiveness } from "../data/type-chart.js";
 import { displayName, fallbackSprite, spriteUrl, titleCase } from "../utils/format.js";
 import { openSearchDropdown, setupSearchDropdownController } from "./search-dropdown.js";
 
-const TYPES = [
-  "normal", "fire", "water", "electric", "grass", "ice", "fighting", "poison", "ground",
-  "flying", "psychic", "bug", "rock", "ghost", "dragon", "dark", "steel", "fairy",
-];
+const TYPES = POKEMON_TYPES;
 const CURATED_ITEMS = [
   "choice-band", "choice-specs", "life-orb", "expert-belt", "muscle-band", "wise-glasses",
   "spell-tag", "black-glasses", "mystic-water", "never-melt-ice", "hard-stone", "silver-powder",
@@ -39,15 +38,9 @@ export function resolveQuickCalcBossTypes({
   trickOrTreat = false,
   forestsCurse = false,
 } = {}) {
-  let types = manualTypesEnabled
-    ? [manualType1, manualType2].filter(Boolean)
-    : [...bossTypes];
-
-  if (magicPowder) types = ["psychic"];
-  if (soak) types = ["water"];
-  if (trickOrTreat && !types.includes("ghost")) types = [...types, "ghost"];
-  if (forestsCurse && !types.includes("grass")) types = [...types, "grass"];
-  return types;
+  return resolveDefenderTypes(bossTypes, {
+    manualTypesEnabled, manualType1, manualType2, magicPowder, soak, trickOrTreat, forestsCurse,
+  });
 }
 
 export function defaultQuickCalcSplitterStats() {
@@ -219,7 +212,12 @@ export class QuickCalc {
       spaIv: 31,
       spaEv: 0,
       atkStage: 0,
+      attackerDefStage: 0,
       spaStage: 0,
+      attackerSpdStage: 0,
+      speStage: 0,
+      accuracyStage: 0,
+      evasionStage: 0,
       critStage: 0,
       guardSplitOrder: [],
       splitterStats: defaultQuickCalcSplitterStats(),
@@ -234,6 +232,19 @@ export class QuickCalc {
       trickOrTreat: false,
       forestsCurse: false,
       soak: false,
+      tarShot: false,
+      reflectType: false,
+      conversion: false,
+      conversionType: "normal",
+      conversion2: false,
+      conversion2Type: "steel",
+      camouflage: false,
+      camouflageType: "normal",
+      burnUp: false,
+      doubleShock: false,
+      roost: false,
+      electrify: false,
+      ionDeluge: false,
       manualTypesEnabled: false,
       manualType1: "steel",
       manualType2: "fighting",
@@ -263,7 +274,12 @@ export class QuickCalc {
         this.cfg.spaIv = active.ivs?.spa ?? 31;
         this.cfg.spaEv = active.evs?.spa ?? 0;
         this.cfg.atkStage = active.stages?.atk ?? 0;
+        this.cfg.attackerDefStage = active.stages?.def ?? 0;
         this.cfg.spaStage = active.stages?.spa ?? 0;
+        this.cfg.attackerSpdStage = active.stages?.spd ?? 0;
+        this.cfg.speStage = active.stages?.spe ?? 0;
+        this.cfg.accuracyStage = active.stages?.accuracy ?? 0;
+        this.cfg.evasionStage = active.stages?.evasion ?? 0;
         this.cfg.critStage = active.stages?.crit ?? 0;
         this.cfg.move = active.moves?.find(Boolean) || null;
       } else {
@@ -300,6 +316,20 @@ export class QuickCalc {
     return this.globalItems;
   }
 
+  attackerStages() {
+    return {
+      ...emptyStages(),
+      atk: Number(this.cfg.atkStage) || 0,
+      def: Number(this.cfg.attackerDefStage) || 0,
+      spa: Number(this.cfg.spaStage) || 0,
+      spd: Number(this.cfg.attackerSpdStage) || 0,
+      spe: Number(this.cfg.speStage) || 0,
+      accuracy: Number(this.cfg.accuracyStage) || 0,
+      evasion: Number(this.cfg.evasionStage) || 0,
+      crit: Number(this.cfg.critStage) || 0,
+    };
+  }
+
   attackerBuild() {
     const pokemon = this.cfg.attacker;
     const ivs = blankSpread(31);
@@ -317,7 +347,7 @@ export class QuickCalc {
       teraType: this.cfg.teraType,
       ivs,
       evs,
-      stages: { ...emptyStages(), atk: Number(this.cfg.atkStage) || 0, spa: Number(this.cfg.spaStage) || 0, crit: Number(this.cfg.critStage) || 0 },
+      stages: this.attackerStages(),
       stats: {},
     };
     build.stats = pokemon ? calculatePokemonStats(pokemon, build) : { hp: 1, atk: 1, def: 1, spa: 1, spd: 1, spe: 1 };
@@ -334,11 +364,46 @@ export class QuickCalc {
     } else {
       move.customPower = move.customPower ?? move.basePower ?? move.power ?? null;
     }
-    return move;
+    const dynamicMove = resolveDynamicMovePower(move, this.attackerStages(), {
+      allowCustomOverride: Boolean(this.cfg.customPowerEnabled),
+    });
+    return withMoveType(dynamicMove, this.effectiveMoveType());
+  }
+
+  effectiveMoveType() {
+    return resolveMoveType(this.cfg.move?.type?.name || "normal", {
+      electrify: this.cfg.electrify,
+      ionDeluge: this.cfg.ionDeluge,
+    });
+  }
+
+  currentBossTypes() {
+    return resolveDefenderTypes(
+      this.cfg.boss?.types?.map(({ type }) => type.name) || [],
+      this.cfg,
+    );
+  }
+
+  currentAttackerTypes() {
+    const bossTypes = this.currentBossTypes();
+    return resolveAttackerTypes(
+      this.cfg.attacker?.types?.map(({ type }) => type.name) || [],
+      this.cfg,
+      { targetTypes: bossTypes, selectedMoveType: this.effectiveMoveType() },
+    );
   }
 
   viewModel() {
-    return { build: this.attackerBuild(), move: this.selectedMove() };
+    const move = this.selectedMove();
+    const bossTypes = this.currentBossTypes();
+    const attackerTypes = this.currentAttackerTypes();
+    return {
+      build: this.attackerBuild(),
+      move,
+      bossTypes,
+      attackerTypes,
+      effectiveness: move?.type?.name ? typeEffectiveness(move.type.name, bossTypes) : 1,
+    };
   }
 
   guardChain() {
@@ -369,7 +434,12 @@ export class QuickCalc {
       spaIv: this.cfg.spaIv,
       spaEv: this.cfg.spaEv,
       atkStage: this.cfg.atkStage,
+      attackerDefStage: this.cfg.attackerDefStage,
       spaStage: this.cfg.spaStage,
+      attackerSpdStage: this.cfg.attackerSpdStage,
+      speStage: this.cfg.speStage,
+      accuracyStage: this.cfg.accuracyStage,
+      evasionStage: this.cfg.evasionStage,
       critStage: this.cfg.critStage,
       ...this.guardSplitPayload(),
       screechCount: this.cfg.screechCount,
@@ -384,6 +454,19 @@ export class QuickCalc {
         trickOrTreat: this.cfg.trickOrTreat,
         forestsCurse: this.cfg.forestsCurse,
         soak: this.cfg.soak,
+        tarShot: this.cfg.tarShot,
+        reflectType: this.cfg.reflectType,
+        conversion: this.cfg.conversion,
+        conversionType: this.cfg.conversionType,
+        conversion2: this.cfg.conversion2,
+        conversion2Type: this.cfg.conversion2Type,
+        camouflage: this.cfg.camouflage,
+        camouflageType: this.cfg.camouflageType,
+        burnUp: this.cfg.burnUp,
+        doubleShock: this.cfg.doubleShock,
+        roost: this.cfg.roost,
+        electrify: this.cfg.electrify,
+        ionDeluge: this.cfg.ionDeluge,
         manualTypesEnabled: this.cfg.manualTypesEnabled,
         manualType1: this.cfg.manualType1,
         manualType2: this.cfg.manualType2,
@@ -498,7 +581,7 @@ export class QuickCalc {
   attackerPanel(calc) {
     const attacker = this.cfg.attacker;
     const abilities = attacker?.abilities?.map(({ ability }) => ability.name) || [];
-    const types = attacker?.types?.map(({ type }) => type.name) || [];
+    const types = calc.attackerTypes || [];
     const physical = isPhysical(calc.move);
     const baseKey = physical ? "atk" : "spa";
     const stage = physical ? this.cfg.atkStage : this.cfg.spaStage;
@@ -512,7 +595,7 @@ export class QuickCalc {
           <label><span>Attacker Pokemon</span><input data-attacker-search value="${escapeHtml(this.attackerQuery || displayName(attacker?.name || ""))}" placeholder="Search attacker..." autocomplete="off" aria-expanded="false"></label>
           <div class="inline-results hidden" data-attacker-results></div>
         </div>
-        ${attacker ? `<div class="type-row">${types.map((type) => `<span class="type-badge type-${type}">${type}</span>`).join("")}</div>` : ""}
+        ${attacker ? `<div class="quick-current-types"><span>Current Attacker Type</span><div class="type-row">${types.length ? types.map((type) => `<span class="type-badge type-${type}">${type}</span>`).join("") : `<span class="type-badge type-typeless">typeless</span>`}</div></div>` : ""}
         <div class="quick-fields four">
           <label><span>Level</span><input type="number" min="1" max="100" data-cfg="level" value="${this.cfg.level}"></label>
           <label><span>Nature</span><select data-cfg="nature">${Object.keys(NATURES).map((key) => `<option value="${key}" ${this.cfg.nature === key ? "selected" : ""}>${natureDropdownLabel(key)}</option>`).join("")}</select></label>
@@ -534,6 +617,13 @@ export class QuickCalc {
           <label><span>Tera Type</span><select data-cfg="teraType">${TYPES.map((type) => `<option value="${type}" ${this.cfg.teraType === type ? "selected" : ""}>${titleCase(type)}</option>`).join("")}</select></label>
           <label class="quick-check"><input type="checkbox" data-cfg-check="terastallized" ${this.cfg.terastallized ? "checked" : ""}><span>Terastallized</span></label>
         </div>
+        <div class="quick-fields five">
+          <label><span>Def stage</span><select data-cfg="attackerDefStage">${this.stageOptions(this.cfg.attackerDefStage)}</select></label>
+          <label><span>SpD stage</span><select data-cfg="attackerSpdStage">${this.stageOptions(this.cfg.attackerSpdStage)}</select></label>
+          <label><span>Spe stage</span><select data-cfg="speStage">${this.stageOptions(this.cfg.speStage)}</select></label>
+          <label><span>Accuracy stage</span><select data-cfg="accuracyStage">${this.stageOptions(this.cfg.accuracyStage)}</select></label>
+          <label><span>Evasion stage</span><select data-cfg="evasionStage">${this.stageOptions(this.cfg.evasionStage)}</select></label>
+        </div>
         <div class="quick-stat-strip">
           <div><span>${baseKey.toUpperCase()} before boosts</span><strong>${fmt(calc.build.stats[baseKey])}</strong></div>
           <div><span>After stage</span><strong>${fmt(applyStage(calc.build.stats[baseKey], stage))}</strong></div>
@@ -551,6 +641,7 @@ export class QuickCalc {
             ? `<img class="quick-boss-sprite-large" src="${spriteUrl(boss.name)}" data-fallback="${fallbackSprite(boss)}" alt="${displayName(boss.name)} sprite">`
             : `<div class="quick-boss-sprite-placeholder" aria-hidden="true">?</div>`}
           <p class="quick-boss-name">${escapeHtml(displayName(boss?.name || "Choose a boss"))}</p>
+          ${boss ? `<div class="quick-current-types"><span>Current Boss Type</span><div class="type-row">${calc.bossTypes.length ? calc.bossTypes.map((type) => `<span class="type-badge type-${type}">${type}</span>`).join("") : `<span class="type-badge type-typeless">typeless</span>`}</div></div>` : ""}
           <div class="quick-boss-selector-wrap quick-search">
             <label><span>Boss selector</span><input data-boss-search value="${escapeHtml(this.bossQuery || displayName(boss?.name || ""))}" placeholder="Search raid boss..." autocomplete="off" aria-expanded="false"></label>
             <div class="inline-results hidden" data-boss-results></div>
@@ -559,8 +650,13 @@ export class QuickCalc {
       </section>`;
   }
 
-  setupPanel(calc) {
+  setupPanel(calc = {}) {
     const guardChain = this.guardChain();
+    const currentBossTypes = calc.bossTypes || resolveQuickCalcBossTypes({
+      bossTypes: this.cfg?.boss?.types?.map(({ type }) => type.name) || [],
+      ...(this.cfg || {}),
+    });
+    const currentEffectiveness = calc.effectiveness ?? 1;
     return `
       <section class="quick-card quick-wide" aria-labelledby="quick-setup-title">
         <div class="quick-card-title compact"><div><span class="eyebrow">Battle modifiers</span><h2 id="quick-setup-title">Setup</h2></div></div>
@@ -621,12 +717,39 @@ export class QuickCalc {
               <label class="quick-check"><input type="checkbox" data-cfg-check="trickOrTreat" ${this.cfg.trickOrTreat ? "checked" : ""}><span>Trick-or-Treat</span></label>
               <label class="quick-check"><input type="checkbox" data-cfg-check="forestsCurse" ${this.cfg.forestsCurse ? "checked" : ""}><span>Forest's Curse</span></label>
               <label class="quick-check"><input type="checkbox" data-cfg-check="soak" ${this.cfg.soak ? "checked" : ""}><span>Soak</span></label>
+              <label class="quick-check"><input type="checkbox" data-cfg-check="tarShot" ${this.cfg.tarShot ? "checked" : ""}><span>Tar Shot</span></label>
               <label class="quick-check"><input type="checkbox" data-cfg-check="manualTypesEnabled" ${this.cfg.manualTypesEnabled ? "checked" : ""}><span>Manual boss type editor</span></label>
             </div>
             <div class="quick-fields two">
               <label><span>Manual type 1</span><select data-cfg="manualType1">${TYPES.map((type) => `<option value="${type}" ${this.cfg.manualType1 === type ? "selected" : ""}>${titleCase(type)}</option>`).join("")}</select></label>
               <label><span>Manual type 2</span><select data-cfg="manualType2"><option value="">None</option>${TYPES.map((type) => `<option value="${type}" ${this.cfg.manualType2 === type ? "selected" : ""}>${titleCase(type)}</option>`).join("")}</select></label>
             </div>
+            <div class="quick-type-summary" aria-live="polite">
+              <span>Current Boss Type</span>
+              <div class="type-row">${currentBossTypes.length ? currentBossTypes.map((type) => `<span class="type-badge type-${type}">${type}</span>`).join("") : `<span class="type-badge type-typeless">typeless</span>`}</div>
+              <strong>Effectiveness: ${currentEffectiveness}x</strong>
+              ${this.cfg.tarShot ? `<small>Tar Shot applied: Fire damage x2</small>` : ""}
+            </div>
+            <details class="quick-advanced-type" ${["reflectType", "conversion", "conversion2", "camouflage", "burnUp", "doubleShock", "roost", "electrify", "ionDeluge"].some((key) => this.cfg[key]) ? "open" : ""}>
+              <summary>Advanced type mechanics</summary>
+              <p class="quick-guard-help">Conversion 2 and Camouflage use the selected manual result because terrain and random type selection are not modeled.</p>
+              <div class="quick-toggle-grid">
+                <label class="quick-check"><input type="checkbox" data-cfg-check="reflectType" ${this.cfg.reflectType ? "checked" : ""}><span>Reflect Type</span></label>
+                <label class="quick-check"><input type="checkbox" data-cfg-check="conversion" ${this.cfg.conversion ? "checked" : ""}><span>Conversion</span></label>
+                <label class="quick-check"><input type="checkbox" data-cfg-check="conversion2" ${this.cfg.conversion2 ? "checked" : ""}><span>Conversion 2 (partial)</span></label>
+                <label class="quick-check"><input type="checkbox" data-cfg-check="camouflage" ${this.cfg.camouflage ? "checked" : ""}><span>Camouflage (partial)</span></label>
+                <label class="quick-check"><input type="checkbox" data-cfg-check="burnUp" ${this.cfg.burnUp ? "checked" : ""}><span>Burn Up used</span></label>
+                <label class="quick-check"><input type="checkbox" data-cfg-check="doubleShock" ${this.cfg.doubleShock ? "checked" : ""}><span>Double Shock used</span></label>
+                <label class="quick-check"><input type="checkbox" data-cfg-check="roost" ${this.cfg.roost ? "checked" : ""}><span>Roost active this turn</span></label>
+                <label class="quick-check"><input type="checkbox" data-cfg-check="electrify" ${this.cfg.electrify ? "checked" : ""}><span>Electrify move override</span></label>
+                <label class="quick-check"><input type="checkbox" data-cfg-check="ionDeluge" ${this.cfg.ionDeluge ? "checked" : ""}><span>Ion Deluge active</span></label>
+              </div>
+              <div class="quick-fields three">
+                <label><span>Conversion type</span><select data-cfg="conversionType">${TYPES.map((type) => `<option value="${type}" ${this.cfg.conversionType === type ? "selected" : ""}>${titleCase(type)}</option>`).join("")}</select></label>
+                <label><span>Manual Conversion 2 type</span><select data-cfg="conversion2Type">${TYPES.map((type) => `<option value="${type}" ${this.cfg.conversion2Type === type ? "selected" : ""}>${titleCase(type)}</option>`).join("")}</select></label>
+                <label><span>Manual Camouflage type</span><select data-cfg="camouflageType">${TYPES.map((type) => `<option value="${type}" ${this.cfg.camouflageType === type ? "selected" : ""}>${titleCase(type)}</option>`).join("")}</select></label>
+              </div>
+            </details>
           </div>
         </div>
       </section>`;
@@ -645,6 +768,7 @@ export class QuickCalc {
           <div class="quick-stat-strip">
             <div><span>Category</span><strong>${titleCase(move?.damage_class?.name || "status")}</strong></div>
             <div><span>Type</span><strong>${titleCase(move?.type?.name || "-")}</strong></div>
+            <div><span>Resolved power</span><strong>${move?.customPower ?? move?.basePower ?? move?.power ?? "-"}</strong></div>
           </div>
           <div class="quick-fields four">
             <label class="quick-check"><input type="checkbox" data-cfg-check="customPowerEnabled" ${this.cfg.customPowerEnabled ? "checked" : ""}><span>Custom power override</span></label>
@@ -668,6 +792,8 @@ export class QuickCalc {
         ? `<div class="quick-simple-results">
             <div><span>Actual Damage</span><strong>${escapeHtml(this.serverResult.actualDamageRange)}</strong></div>
             <div class="myuu-range"><span>Myuu Rounded Damage</span><strong>${escapeHtml(this.serverResult.myuuDamageRange)}</strong></div>
+            <div><span>Effectiveness</span><strong>${calc.effectiveness ?? 1}x</strong></div>
+            ${this.cfg?.tarShot ? `<div><span>Tar Shot</span><strong>Fire damage x2</strong></div>` : ""}
           </div>`
         : `<div class="quick-simple-results"><div><span>Status</span><strong>${escapeHtml(this.serverError || "Server calculation unavailable")}</strong></div></div>`;
     return `

@@ -24,7 +24,7 @@ function applyStatRaisingMove(state, user, side, turnLog, statKey, stagesToRaise
 
   if (result.after === result.before) {
     turnLog.notes.push(`${actorName}'s ${statNameLabel} won't go any higher!`);
-    return;
+    return result;
   }
 
   turnLog.notes.push(`${actorName}'s ${statNameLabel} ${roseLabel}!`);
@@ -32,6 +32,7 @@ function applyStatRaisingMove(state, user, side, turnLog, statKey, stagesToRaise
     turnLog.notes.push(`Simple doubled the stat change!`);
   }
   turnLog.notes.push(`${actorName} ${statNameLabel} stage: ${stageText(result.before)} -> ${stageText(result.after)}.`);
+  return result;
 }
 
 export function applyStatLoweringMove(state, user, target, side, turnLog, moveName, statKey, stagesToDrop, statNameLabel) {
@@ -48,6 +49,30 @@ export function applyStatLoweringMove(state, user, target, side, turnLog, moveNa
       turnLog.notes.push(`Simple doubled the stat change!`);
     }
     turnLog.notes.push(`${targetName} ${statNameLabel} stage: ${stageText(result.before)} -> ${stageText(result.after)}.`);
+  }
+  return result;
+}
+
+export function applyDamagingMoveAfterEffects(state, user, target, side, turnLog, moveName, landed = true) {
+  if (!landed) return;
+  const drops = moveName === "close-combat"
+    ? [["def", "Defense"], ["spd", "Sp. Defense"]]
+    : moveName === "superpower"
+      ? [["atk", "Attack"], ["def", "Defense"]]
+      : [];
+  const actorName = battlerNameForSide(state, user, side, "user");
+  if (drops.length) {
+    const userRef = battlerRefForSide(state, side, "user");
+    for (const [stat, label] of drops) {
+      const result = changeStage(userRef, stat, -1, state);
+      if (result.after !== result.before) turnLog.notes.push(`${actorName}'s ${label} fell!`);
+      if (result.simpleBoosted) turnLog.notes.push("Simple doubled the stat change!");
+    }
+  }
+
+  const typeRemoval = state.removeUserTypeAfterMove(side, moveName);
+  if (typeRemoval) {
+    turnLog.notes.push(`${actorName} lost its ${titleCase(typeRemoval.removedType)} type!`);
   }
 }
 
@@ -83,6 +108,22 @@ export const MOVE_EFFECTS = {
     description: "Boosts user's Sp. Atk by 2 stages.",
     apply(state, user, target, side, turnLog) {
       applyStatRaisingMove(state, user, side, turnLog, "spa", 2, "Sp. Atk", "sharply rose");
+    }
+  },
+  "tail-glow": {
+    name: "Tail Glow",
+    implemented: "Implemented",
+    description: "Boosts user's Sp. Attack by 3 stages.",
+    apply(state, user, target, side, turnLog) {
+      applyStatRaisingMove(state, user, side, turnLog, "spa", 3, "Sp. Attack", "rose drastically");
+    }
+  },
+  "cotton-guard": {
+    name: "Cotton Guard",
+    implemented: "Implemented",
+    description: "Boosts user's Defense by 3 stages.",
+    apply(state, user, target, side, turnLog) {
+      applyStatRaisingMove(state, user, side, turnLog, "def", 3, "Defense", "rose drastically");
     }
   },
   "simple-beam": {
@@ -157,11 +198,72 @@ export const MOVE_EFFECTS = {
     name: "Trick-or-Treat",
     implemented: "Implemented",
     description: "Adds Ghost type to the target.",
-    apply(state, user, target, side, turnLog) {
+    apply(state, user, target, side, turnLog, options = {}) {
+      if (options.isZMove) {
+        const userRef = battlerRefForSide(state, side, "user");
+        for (const stat of ["atk", "def", "spa", "spd", "spe"]) {
+          changeStage(userRef, stat, 1, state);
+        }
+        const actorName = battlerNameForSide(state, user, side, "user");
+        turnLog.notes.push(`${actorName}'s stats rose!`);
+      }
       const targetSide = side === "player" ? "boss" : "player";
       state.applyTypeChangingMove("trick-or-treat", targetSide);
-      const targetName = targetSide === "boss" ? getBossDisplayName(state) : displayName(user.pokemon.name);
-      turnLog.notes.push(`${targetName}'s type changed to include Ghost!`);
+      const targetName = targetSide === "boss" ? `the opposing ${getBossDisplayName(state)}` : displayName(user.pokemon.name);
+      turnLog.notes.push(`Ghost type was added to ${targetName}!`);
+    }
+  },
+  "octolock": {
+    name: "Octolock",
+    implemented: "Implemented",
+    description: "Traps the target and lowers its Defense and Sp. Defense at the end of each turn.",
+    apply(state, user, target, side, turnLog) {
+      const targetSide = side === "player" ? "boss" : "player";
+      state.volatileEffects.octolock = {
+        target: targetSide,
+        targetSlot: targetSide === "player" ? state.activeSlot : null,
+        source: side,
+        active: true,
+      };
+      const targetName = targetSide === "boss" ? `The opposing ${getBossDisplayName(state)}` : displayName(user.pokemon.name);
+      turnLog.notes.push(`${targetName} can no longer escape!`);
+    }
+  },
+  "ingrain": {
+    name: "Ingrain",
+    implemented: "Implemented",
+    description: "Roots the user and restores one sixteenth of max HP at the end of each turn.",
+    apply(state, user, target, side, turnLog) {
+      const actorName = battlerNameForSide(state, user, side, "user");
+      if (side === "player") state.volatileEffects.ingrain[state.activeSlot] = true;
+      else state.volatileEffects.ingrainBoss = true;
+      turnLog.notes.push(`${actorName} planted its roots!`);
+    }
+  },
+  "memento": {
+    name: "Memento",
+    implemented: "Implemented",
+    description: "The user faints and lowers the target's Attack and Sp. Attack by 2 stages.",
+    apply(state, user, target, side, turnLog) {
+      const actorName = battlerNameForSide(state, user, side, "user");
+      if (side === "player") {
+        if (state.teamHP[state.activeSlot] > 0) state.faintedAlliesCount += 1;
+        state.teamHP[state.activeSlot] = 0;
+      } else {
+        state.bossHP = 0;
+      }
+      turnLog.notes.push(`${actorName} fainted!`);
+      applyStatLoweringMove(state, user, target, side, turnLog, "Memento", "atk", 2, "Attack");
+      applyStatLoweringMove(state, user, target, side, turnLog, "Memento", "spa", 2, "Sp. Attack");
+    }
+  },
+  "tickle": {
+    name: "Tickle",
+    implemented: "Implemented",
+    description: "Lowers the target's Attack and Defense by 1 stage.",
+    apply(state, user, target, side, turnLog) {
+      applyStatLoweringMove(state, user, target, side, turnLog, "Tickle", "atk", 1, "Attack");
+      applyStatLoweringMove(state, user, target, side, turnLog, "Tickle", "def", 1, "Defense");
     }
   },
   "forests-curse": {
@@ -196,6 +298,126 @@ export const MOVE_EFFECTS = {
       const targetName = targetSide === "boss" ? getBossDisplayName(state) : displayName(user.pokemon.name);
       turnLog.notes.push(`${targetName}'s type changed to Water!`);
     }
+  },
+  "tar-shot": {
+    name: "Tar Shot",
+    implemented: "Implemented",
+    description: "Lowers the target's Speed by 1 stage and doubles Fire damage against it.",
+    apply(state, user, target, side, turnLog) {
+      const targetSide = side === "player" ? "boss" : "player";
+      applyStatLoweringMove(state, user, target, side, turnLog, "Tar Shot", "spe", 1, "Speed");
+      state.applyTarShot(targetSide);
+      const targetName = targetSide === "boss" ? `The opposing ${getBossDisplayName(state)}` : displayName(user.pokemon.name);
+      turnLog.notes.push(`${targetName} became weaker to Fire-type moves!`);
+    }
+  },
+  "reflect-type": {
+    name: "Reflect Type",
+    implemented: "Implemented",
+    description: "Copies the target's current types.",
+    apply(state, user, target, side, turnLog) {
+      const targetSide = side === "player" ? "boss" : "player";
+      const copiedTypes = state.getCurrentTypes(targetSide);
+      state.setCurrentTypes(side, copiedTypes);
+      const actorName = battlerNameForSide(state, user, side, "user");
+      turnLog.notes.push(`${actorName} copied the target's current type!`);
+    }
+  },
+  "conversion": {
+    name: "Conversion",
+    implemented: "Implemented",
+    description: "Changes the user to the type of its first move.",
+    apply(state, user, target, side, turnLog) {
+      const moves = side === "player" ? state.team[state.activeSlot].moves : state.bossMoves;
+      const resultingType = moves.find(Boolean)?.type?.name;
+      if (!resultingType) {
+        turnLog.notes.push("But it failed!");
+        return;
+      }
+      state.setCurrentTypes(side, [resultingType]);
+      const actorName = battlerNameForSide(state, user, side, "user");
+      turnLog.notes.push(`${actorName} became ${titleCase(resultingType)} type!`);
+    }
+  },
+  "conversion-2": {
+    name: "Conversion 2",
+    implemented: "Partial",
+    description: "Changes the user to a deterministic type that resists or is immune to the target's last move.",
+    apply(state, user, target, side, turnLog) {
+      const resultingType = state.conversion2TypeFor(side);
+      if (!resultingType) {
+        turnLog.notes.push("But it failed! No target move type was available.");
+        return;
+      }
+      state.setCurrentTypes(side, [resultingType]);
+      const actorName = battlerNameForSide(state, user, side, "user");
+      turnLog.notes.push(`${actorName} became ${titleCase(resultingType)} type!`);
+    }
+  },
+  "camouflage": {
+    name: "Camouflage",
+    implemented: "Partial",
+    description: "Changes the user to Normal type because battle terrain is not modeled.",
+    apply(state, user, target, side, turnLog) {
+      state.setCurrentTypes(side, ["normal"]);
+      const actorName = battlerNameForSide(state, user, side, "user");
+      turnLog.notes.push(`${actorName} became Normal type!`);
+    }
+  },
+  "roost": {
+    name: "Roost",
+    implemented: "Implemented",
+    description: "Heals half max HP and removes Flying type until the end of the turn.",
+    apply(state, user, target, side, turnLog) {
+      const actorName = battlerNameForSide(state, user, side, "user");
+      if (side === "player") {
+        const maxHp = user.stats.hp;
+        state.teamHP[state.activeSlot] = Math.min(maxHp, state.teamHP[state.activeSlot] + Math.floor(maxHp / 2));
+      } else {
+        state.bossHP = Math.min(state.bossMaxHP, state.bossHP + Math.floor(state.bossMaxHP / 2));
+      }
+      const change = state.beginRoost(side);
+      turnLog.notes.push(`${actorName} restored HP!`);
+      if (change.before.includes("flying")) turnLog.notes.push(`${actorName} lost its Flying type for the rest of the turn!`);
+    }
+  },
+  "electrify": {
+    name: "Electrify",
+    implemented: "Implemented",
+    description: "Changes the target's next move this turn to Electric type.",
+    apply(state, user, target, side, turnLog) {
+      state.volatileEffects.electrifyTarget = side === "player" ? "boss" : "player";
+      turnLog.notes.push("The target's move was electrified!");
+    }
+  },
+  "ion-deluge": {
+    name: "Ion Deluge",
+    implemented: "Implemented",
+    description: "Changes Normal-type moves to Electric type for the rest of the turn.",
+    apply(state, user, target, side, turnLog) {
+      state.volatileEffects.ionDeluge = true;
+      turnLog.notes.push("A deluge of ions showers the battlefield!");
+    }
+  },
+  "trick-room": {
+    name: "Trick Room",
+    implemented: "Implemented",
+    description: "Reverses move order within equal priority brackets for five turns.",
+    apply(state, user, target, side, turnLog) {
+      const active = state.volatileEffects.trickRoomTurns > 0;
+      state.volatileEffects.trickRoomTurns = active ? 0 : 5;
+      turnLog.notes.push(active ? "The twisted dimensions returned to normal!" : "The dimensions were twisted!");
+    }
+  },
+  "burn-up": {
+    name: "Burn Up",
+    implemented: "Implemented",
+    description: "After a successful hit, removes the user's Fire type; fails without Fire typing."
+  },
+  "double-shock": {
+    name: "Double Shock",
+    implemented: "Implemented",
+    description: "After a successful hit, removes the user's Electric type; fails without Electric typing."
   },
   "speed-swap": {
     name: "Speed Swap",
@@ -243,6 +465,7 @@ export const MOVE_EFFECTS = {
     implemented: "Implemented",
     description: "Averages user's and target's Defense and Sp. Defense actual stats.",
     apply(state, user, target, side, turnLog) {
+      state.recordSplitEvent("guard-split", state.activeSlot);
       const userDef = user.currentStats.def;
       const userSpd = user.currentStats.spd;
       const bossDef = state.bossCurrentStats.def;
@@ -268,16 +491,14 @@ export const MOVE_EFFECTS = {
         state.bossStatSources.spd.push(`Guard Split with ${displayName(user.pokemon.name)}`);
         
         const bossName = getBossDisplayName(state);
-        turnLog.notes.push(`${bossName}'s Defense changed: ${bossDef} → ${avgDef}.`);
-        turnLog.notes.push(`${bossName}'s Sp. Defense changed: ${bossSpd} → ${avgSpd}.`);
+        turnLog.notes.push(`${bossName} shared its defensive power with ${displayName(user.pokemon.name)}.`);
       } else {
         user.statSources.def.push("Guard Split with Boss");
         user.statSources.spd.push("Guard Split with Boss");
         state.bossStatSources.def.push("Guard Split with player active");
         state.bossStatSources.spd.push("Guard Split with player active");
         
-        turnLog.notes.push(`${displayName(user.pokemon.name)}'s Defense changed: ${userDef} → ${avgDef}.`);
-        turnLog.notes.push(`${displayName(user.pokemon.name)}'s Sp. Defense changed: ${userSpd} → ${avgSpd}.`);
+        turnLog.notes.push(`${displayName(user.pokemon.name)} shared its defensive power with the boss.`);
       }
     }
   },
@@ -286,6 +507,7 @@ export const MOVE_EFFECTS = {
     implemented: "Implemented",
     description: "Averages user's and target's Attack and Sp. Attack actual stats.",
     apply(state, user, target, side, turnLog) {
+      state.recordSplitEvent("power-split", state.activeSlot);
       const userAtk = user.currentStats.atk;
       const userSpa = user.currentStats.spa;
       const bossAtk = state.bossCurrentStats.atk;
@@ -311,16 +533,14 @@ export const MOVE_EFFECTS = {
         state.bossStatSources.spa.push(`Power Split with ${displayName(user.pokemon.name)}`);
         
         const bossName = getBossDisplayName(state);
-        turnLog.notes.push(`${bossName}'s Attack changed: ${bossAtk} → ${avgAtk}.`);
-        turnLog.notes.push(`${bossName}'s Sp. Attack changed: ${bossSpa} → ${avgSpa}.`);
+        turnLog.notes.push(`${bossName} shared its offensive power with ${displayName(user.pokemon.name)}.`);
       } else {
         user.statSources.atk.push("Power Split with Boss");
         user.statSources.spa.push("Power Split with Boss");
         state.bossStatSources.atk.push("Power Split with player active");
         state.bossStatSources.spa.push("Power Split with player active");
         
-        turnLog.notes.push(`${displayName(user.pokemon.name)}'s Attack changed: ${userAtk} → ${avgAtk}.`);
-        turnLog.notes.push(`${displayName(user.pokemon.name)}'s Sp. Attack changed: ${userSpa} → ${avgSpa}.`);
+        turnLog.notes.push(`${displayName(user.pokemon.name)} shared its offensive power with the boss.`);
       }
     }
   },
@@ -404,4 +624,30 @@ export const MOVE_EFFECTS = {
       applyStatLoweringMove(state, user, target, side, turnLog, "Scary Face", "spe", 2, "Speed");
     }
   }
+};
+
+const AUDITED_STATUS_MOVES = [
+  "soak", "tar-shot", "magic-powder", "trick-or-treat", "forests-curse", "reflect-type",
+  "conversion", "conversion-2", "camouflage", "burn-up", "double-shock", "roost", "electrify",
+  "ion-deluge", "screech", "metal-sound", "fake-tears", "charm", "feather-dance", "tail-whip",
+  "leer", "growl", "string-shot", "scary-face", "tickle", "memento", "octolock", "ingrain",
+  "tail-glow", "cotton-guard", "simple-beam", "guard-split", "power-split", "speed-swap",
+  "baton-pass", "trick-room", "focus-energy", "belly-drum",
+];
+
+export const MOVE_MECHANICS_AUDIT = Object.fromEntries(AUDITED_STATUS_MOVES.map((name) => [name, {
+  name: MOVE_EFFECTS[name]?.name || titleCase(name),
+  status: MOVE_EFFECTS[name]?.implemented || "Missing",
+  description: MOVE_EFFECTS[name]?.description || "No battle implementation is registered.",
+}]));
+
+MOVE_MECHANICS_AUDIT["z-belly-drum"] = {
+  name: "Z-Belly Drum",
+  status: "Implemented",
+  description: "Restores HP first, then applies Belly Drum and marks the Z-Move used.",
+};
+MOVE_MECHANICS_AUDIT["z-trick-or-treat"] = {
+  name: "Z-Trick-or-Treat",
+  status: "Implemented",
+  description: "Raises all five battle stats, adds Ghost type, and marks the Z-Move used.",
 };

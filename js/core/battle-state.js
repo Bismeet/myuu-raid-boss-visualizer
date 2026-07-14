@@ -1,12 +1,58 @@
-import { emptyStages } from "./stages.js";
+import {
+  emptyStages,
+  getStoredPowerLikeBasePower as storedPowerLikeBasePowerFromStages,
+  getTotalPositiveStages as totalPositiveStagesFromStages,
+  resolveDynamicMovePower,
+} from "./stages.js";
 import { calculatePokemonStats } from "./stats.js";
 import { damageRolls } from "./damage.js";
 import { displayName, titleCase, getBossDisplayName } from "../utils/format.js";
 import { ITEM_EFFECTS } from "../data/item-effects.js";
-import { MOVE_EFFECTS } from "../data/move-effects.js";
+import { MOVE_EFFECTS, applyDamagingMoveAfterEffects } from "../data/move-effects.js";
+import { POKEMON_TYPES, addType, removeType, resolveMoveType, withMoveType } from "./type-mechanics.js";
+import { typeEffectiveness } from "../data/type-chart.js";
 
 const blankStats = () => ({ hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 });
 const blankSpread = (value) => ({ hp: value, atk: value, def: value, spa: value, spd: value, spe: value });
+const freshVolatileEffects = () => ({
+  octolock: null,
+  ingrain: [false, false, false, false, false, false],
+  ingrainBoss: false,
+  tarShot: { player: [false, false, false, false, false, false], boss: false },
+  roost: { player: [null, null, null, null, null, null], boss: null },
+  electrifyTarget: null,
+  ionDeluge: false,
+  lastMoveType: { player: null, boss: null },
+  trickRoomTurns: 0,
+});
+
+export function normalizeVolatileEffects(value = {}) {
+  const fresh = freshVolatileEffects();
+  return {
+    octolock: value.octolock ? { ...value.octolock } : null,
+    ingrain: Array.isArray(value.ingrain) ? fresh.ingrain.map((fallback, index) => Boolean(value.ingrain[index] ?? fallback)) : fresh.ingrain,
+    ingrainBoss: Boolean(value.ingrainBoss),
+    tarShot: {
+      player: Array.isArray(value.tarShot?.player)
+        ? fresh.tarShot.player.map((fallback, index) => Boolean(value.tarShot.player[index] ?? fallback))
+        : fresh.tarShot.player,
+      boss: Boolean(value.tarShot?.boss),
+    },
+    roost: {
+      player: Array.isArray(value.roost?.player)
+        ? fresh.roost.player.map((fallback, index) => Array.isArray(value.roost.player[index]) ? [...value.roost.player[index]] : fallback)
+        : fresh.roost.player,
+      boss: Array.isArray(value.roost?.boss) ? [...value.roost.boss] : null,
+    },
+    electrifyTarget: ["player", "boss"].includes(value.electrifyTarget) ? value.electrifyTarget : null,
+    ionDeluge: Boolean(value.ionDeluge),
+    lastMoveType: {
+      player: value.lastMoveType?.player || null,
+      boss: value.lastMoveType?.boss || null,
+    },
+    trickRoomTurns: Math.max(0, Math.min(5, Number(value.trickRoomTurns) || 0)),
+  };
+}
 
 export function normalizeAbility(ability) {
   return (ability || "").toLowerCase().trim().replaceAll(" ", "-");
@@ -106,6 +152,9 @@ export class BattleState extends EventTarget {
       boss: false
     };
     this.damageRollMode = "random";
+    this.privateDamageResolver = null;
+    this.splitEvents = [];
+    this.volatileEffects = freshVolatileEffects();
 
     this.savedBattleBroken = false;
     this.needsResume = false;
@@ -237,6 +286,8 @@ export class BattleState extends EventTarget {
     this.uiMode = "battle";
     this.isResolvingTurn = false;
     this.awaitingForcedSwitch = false;
+    this.splitEvents = [];
+    this.volatileEffects = freshVolatileEffects();
 
     this.playerSpeedOverrides = [null, null, null, null, null, null];
     this.bossSpeedOverride = null;
@@ -376,6 +427,8 @@ export class BattleState extends EventTarget {
     this.battleLog = [];
     this.history = [];
     this.awaitingForcedSwitch = false;
+    this.splitEvents = [];
+    this.volatileEffects = freshVolatileEffects();
     this.team.forEach((slot) => {
       if (slot.pokemon) {
         slot.stats = calculatePokemonStats(slot.pokemon, slot);
@@ -498,6 +551,8 @@ export class BattleState extends EventTarget {
         player: [...this.abilityOverrides.player],
         boss: this.abilityOverrides.boss
       },
+      splitEventsSnapshot: this.splitEvents.map((event) => ({ ...event })),
+      volatileEffectsSnapshot: JSON.parse(JSON.stringify(this.volatileEffects)),
       damageRollMode: this.damageRollMode
     };
   }
@@ -580,6 +635,10 @@ export class BattleState extends EventTarget {
         boss: snapshot.abilityOverridesSnapshot.boss
       };
     }
+    this.splitEvents = Array.isArray(snapshot.splitEventsSnapshot)
+      ? snapshot.splitEventsSnapshot.map((event) => ({ ...event }))
+      : [];
+    this.volatileEffects = normalizeVolatileEffects(snapshot.volatileEffectsSnapshot);
     if (snapshot.damageRollMode !== undefined) {
       this.damageRollMode = snapshot.damageRollMode;
     }
@@ -588,10 +647,208 @@ export class BattleState extends EventTarget {
     this.emit("team");
   }
 
-  executeTurn(playerAction, playerMoveIndex, playerSwitchSlot, bossAction, bossMoveIndex, playerTerastallize = false) {
+  recordSplitEvent(kind, slot = this.activeSlot) {
+    this.splitEvents.push({ kind, slot });
+  }
+
+  clearPlayerVolatileEffects(slot) {
+    this.volatileEffects.ingrain[slot] = false;
+    this.volatileEffects.tarShot.player[slot] = false;
+    this.volatileEffects.roost.player[slot] = null;
+    if (this.volatileEffects.octolock?.target === "player"
+      && this.volatileEffects.octolock.targetSlot === slot) {
+      this.volatileEffects.octolock = null;
+    }
+  }
+
+  buildPrivateDamageRequest(direction, currentActive, move, attackerAbility, defenderAbility, attackerItem = "") {
+    const maxHits = Number(move?.meta?.max_hits);
+    const hitCount = normalizeAbility(attackerAbility) === "skill-link" && Number.isFinite(maxHits) && maxHits > 1
+      ? Math.min(5, maxHits)
+      : 1;
+    const publicFallbackStats = { atk: 1, def: 1, spa: 1, spd: 1, spe: 1 };
+    const teamBaseStats = this.team.map((slot) => {
+      const stats = slot.originalStats || slot.stats;
+      if (!slot.pokemon || !stats) return { ...publicFallbackStats };
+      return Object.fromEntries(Object.keys(publicFallbackStats).map((key) => [key, Math.max(1, Number(stats[key]) || 1)]));
+    });
+
+    return {
+      direction,
+      boss: this.boss.name,
+      move: move.name,
+      moveType: move.type?.name || "normal",
+      customPower: move.customPower ?? move.basePower ?? move.power ?? null,
+      hitCount,
+      faintedAllies: this.faintedAlliesCount,
+      activeSlot: this.activeSlot,
+      teamBaseStats,
+      splitEvents: this.splitEvents.map((event) => ({ ...event })),
+      tarShot: direction === "player-to-boss"
+        ? this.volatileEffects.tarShot.boss
+        : this.volatileEffects.tarShot.player[this.activeSlot],
+      player: {
+        pokemon: currentActive.pokemon.name,
+        level: currentActive.level,
+        ability: direction === "player-to-boss" ? attackerAbility : defenderAbility,
+        item: direction === "player-to-boss" ? attackerItem : getEffectiveItem({ slotIndex: this.activeSlot, item: currentActive.item }, this),
+        teraType: currentActive.teraType || "normal",
+        terastallized: this.terastallized.player[this.activeSlot],
+        types: [...this.teamCurrentTypes[this.activeSlot]],
+        stages: { ...this.teamStages[this.activeSlot] },
+        atFullHp: this.teamHP[this.activeSlot] === currentActive.stats.hp,
+      },
+      bossState: {
+        ability: direction === "player-to-boss" ? defenderAbility : attackerAbility,
+        types: [...this.bossCurrentTypes],
+        stages: { ...this.bossStages },
+        atFullHp: this.bossHP === this.bossMaxHP,
+      },
+    };
+  }
+
+  async resolveDamage(localPayload, request) {
+    if (!this.privateDamageResolver || this.manualBossOverride) return damageRolls(localPayload);
+    const safeResult = await this.privateDamageResolver(request);
+    const basePower = localPayload.move?.basePower ?? localPayload.move?.power ?? null;
+    const usedPower = localPayload.move?.customPower ?? basePower;
+    return {
+      rolls: safeResult.rolls,
+      myuuRolls: safeResult.myuuRolls,
+      myuuAverage: safeResult.myuuAverage,
+      min: safeResult.rolls[0],
+      max: safeResult.rolls.at(-1),
+      effectiveness: safeResult.effectiveness,
+      basePower,
+      usedPower,
+      criticalModifier: 1,
+    };
+  }
+
+  getCurrentTypes(side) {
+    return side === "boss" ? this.bossCurrentTypes : this.teamCurrentTypes[this.activeSlot];
+  }
+
+  setCurrentTypes(side, types) {
+    const next = [...new Set((types || []).filter(Boolean))];
+    if (side === "boss") this.bossCurrentTypes = next;
+    else this.teamCurrentTypes[this.activeSlot] = next;
+    return next;
+  }
+
+  applyTarShot(targetSide) {
+    if (targetSide === "boss") this.volatileEffects.tarShot.boss = true;
+    else this.volatileEffects.tarShot.player[this.activeSlot] = true;
+  }
+
+  beginRoost(side) {
+    const before = [...this.getCurrentTypes(side)];
+    const withoutFlying = removeType(before, "flying");
+    if (side === "boss") this.volatileEffects.roost.boss = before;
+    else this.volatileEffects.roost.player[this.activeSlot] = before;
+    this.setCurrentTypes(side, withoutFlying);
+    return { before, after: withoutFlying };
+  }
+
+  resolveActionMove(move, side, turnLog) {
+    if (!move) return move;
+    const originalType = move.type?.name || "normal";
+    const electrified = this.volatileEffects.electrifyTarget === side;
+    const effectiveType = resolveMoveType(originalType, {
+      electrify: electrified,
+      ionDeluge: this.volatileEffects.ionDeluge,
+    });
+    if (electrified) this.volatileEffects.electrifyTarget = null;
+    if (effectiveType !== originalType) {
+      turnLog.notes.push(`${titleCase(move.name)} became Electric type for this turn!`);
+    }
+    this.volatileEffects.lastMoveType[side] = effectiveType;
+    return withMoveType(move, effectiveType);
+  }
+
+  conversion2TypeFor(side) {
+    const targetSide = side === "player" ? "boss" : "player";
+    const lastType = this.volatileEffects.lastMoveType[targetSide];
+    if (!lastType) return "";
+    const current = this.getCurrentTypes(side);
+    return POKEMON_TYPES.find((type) => !current.includes(type) && typeEffectiveness(lastType, [type]) < 1)
+      || POKEMON_TYPES.find((type) => typeEffectiveness(lastType, [type]) < 1)
+      || "";
+  }
+
+  removeUserTypeAfterMove(side, moveName) {
+    const removedType = moveName === "burn-up" ? "fire" : moveName === "double-shock" ? "electric" : "";
+    if (!removedType) return null;
+    const before = this.getCurrentTypes(side);
+    if (!before.includes(removedType)) return null;
+    const after = removeType(before, removedType);
+    this.setCurrentTypes(side, after);
+    return { removedType, after };
+  }
+
+  processEndOfTurnEffects(turnLog) {
+    const octolock = this.volatileEffects.octolock;
+    if (octolock?.active) {
+      const targetIsBoss = octolock.target === "boss";
+      const targetAlive = targetIsBoss ? this.bossHP > 0 : this.teamHP[this.activeSlot] > 0;
+      if (targetAlive) {
+        const targetRef = targetIsBoss ? { isBoss: true } : { slotIndex: this.activeSlot, isBoss: false };
+        const targetName = targetIsBoss
+          ? `The opposing ${getBossDisplayName(this)}`
+          : displayName(this.team[this.activeSlot].pokemon.name);
+        const defense = changeStage(targetRef, "def", -1, this);
+        const specialDefense = changeStage(targetRef, "spd", -1, this);
+        if (defense.after !== defense.before) turnLog.notes.push(`${targetName}'s Defense fell!`);
+        if (specialDefense.after !== specialDefense.before) turnLog.notes.push(`${targetName}'s Sp. Defense fell!`);
+      }
+    }
+
+    const slot = this.activeSlot;
+    if (this.volatileEffects.ingrain[slot] && this.teamHP[slot] > 0) {
+      const active = this.team[slot];
+      const maxHp = active.stats.hp;
+      if (this.teamHP[slot] < maxHp) {
+        const heal = Math.floor(maxHp / 16);
+        this.teamHP[slot] = Math.min(maxHp, this.teamHP[slot] + heal);
+        const name = displayName(active.pokemon.name);
+        turnLog.notes.push(`${name} absorbed nutrients with its roots!`);
+        turnLog.notes.push(`${name} restored HP!`);
+      }
+    }
+
+    if (this.volatileEffects.ingrainBoss && this.bossHP > 0 && this.bossHP < this.bossMaxHP) {
+      const heal = Math.floor(this.bossMaxHP / 16);
+      this.bossHP = Math.min(this.bossMaxHP, this.bossHP + heal);
+      const bossName = `The opposing ${getBossDisplayName(this)}`;
+      turnLog.notes.push(`${bossName} absorbed nutrients with its roots!`);
+      turnLog.notes.push(`${bossName} restored HP!`);
+    }
+
+    const playerRoostTypes = this.volatileEffects.roost.player[this.activeSlot];
+    if (Array.isArray(playerRoostTypes)) {
+      this.teamCurrentTypes[this.activeSlot] = [...playerRoostTypes];
+      this.volatileEffects.roost.player[this.activeSlot] = null;
+    }
+    if (Array.isArray(this.volatileEffects.roost.boss)) {
+      this.bossCurrentTypes = [...this.volatileEffects.roost.boss];
+      this.volatileEffects.roost.boss = null;
+    }
+    this.volatileEffects.electrifyTarget = null;
+    this.volatileEffects.ionDeluge = false;
+    if (this.volatileEffects.trickRoomTurns > 0) this.volatileEffects.trickRoomTurns -= 1;
+  }
+
+  async executeTurn(playerAction, playerMoveIndex, playerSwitchSlot, bossAction, bossMoveIndex, playerTerastallize = false) {
     if (!this.battleActive) return;
     if (this.awaitingForcedSwitch) {
       throw new Error("Active Pokémon is fainted. You must select a replacement first.");
+    }
+    if (playerAction === "switch") {
+      const trappedByOctolock = this.volatileEffects.octolock?.active
+        && this.volatileEffects.octolock.target === "player";
+      if (this.volatileEffects.ingrain[this.activeSlot] || trappedByOctolock) {
+        throw new Error("The active Pokémon is rooted or trapped and cannot switch.");
+      }
     }
 
     // 1. Take snapshot BEFORE executing turn
@@ -627,6 +884,14 @@ export class BattleState extends EventTarget {
       const move = activeMon.moves[playerMoveIndex];
       if (!move) {
         throw new Error("No move selected in that slot.");
+      }
+      if (playerAction === "use-z-move") {
+        const item = normalizeAbility(activeMon.item);
+        const validZMove = (move.name === "belly-drum" && item === "normalium-z")
+          || (move.name === "trick-or-treat" && item === "ghostium-z");
+        if (!validZMove || this.zMoveUsed.player[this.activeSlot]) {
+          throw new Error("That Z-Move is not available.");
+        }
       }
     }
 
@@ -687,12 +952,13 @@ export class BattleState extends EventTarget {
     } else if (bossFinalPriority > playerFinalPriority) {
       playerGoesFirst = false;
     } else {
+      const trickRoomActive = this.volatileEffects.trickRoomTurns > 0;
       if (playerSpeed > bossSpeed) {
-        playerGoesFirst = true;
+        playerGoesFirst = !trickRoomActive;
       } else if (bossSpeed > playerSpeed) {
-        playerGoesFirst = false;
+        playerGoesFirst = trickRoomActive;
       } else {
-        playerGoesFirst = true; // Speed tie fallback
+        playerGoesFirst = true;
       }
     }
 
@@ -748,6 +1014,8 @@ export class BattleState extends EventTarget {
           }
 
           // Reset the switched-out Pokémon's splits, overrides, stages, and type changes
+          this.recordSplitEvent("reset-player", currentActiveSlot);
+          this.clearPlayerVolatileEffects(currentActiveSlot);
           this.resetSlotStats(currentActiveSlot);
           this.teamStages[currentActiveSlot] = emptyStages();
           this.teamCurrentTypes[currentActiveSlot] = currentActiveMon.pokemon.types.map(({ type }) => type.name);
@@ -757,7 +1025,8 @@ export class BattleState extends EventTarget {
           turnLog.pokemon = incomingMon.pokemon.name;
           notesCountBefore = turnLog.notes.length;
         } else if (step.action === "use-move" || step.action === "use-z-move") {
-          const move = this.team[this.activeSlot].moves[step.moveIndex];
+          const selectedMove = this.team[this.activeSlot].moves[step.moveIndex];
+          let move = resolveDynamicMovePower(selectedMove, this.teamStages[this.activeSlot]);
           if (move) {
             const currentActive = this.team[this.activeSlot];
             
@@ -772,6 +1041,7 @@ export class BattleState extends EventTarget {
               turnLog.messages.push(teraMsg);
               notesCountBefore = turnLog.notes.length;
             }
+            move = this.resolveActionMove(move, "player", turnLog);
             turnLog.playerMove = step.action === "use-z-move" ? `Z-${titleCase(move.name)}` : move.name;
             
             // Consume Custap Berry when move actually executes
@@ -805,11 +1075,19 @@ export class BattleState extends EventTarget {
               
               // Log move usage
               const moveLabel = step.action === "use-z-move" ? `Z-${titleCase(move.name)}` : titleCase(move.name);
+              if (step.action === "use-z-move" && move.name === "trick-or-treat") {
+                const zPowerMessage = `${displayName(currentActive.pokemon.name)} surrounded itself with its Z-Power!`;
+                turnLog.messages.push(zPowerMessage);
+                turnLog.notes.push(zPowerMessage);
+                this.zMoveUsed.player[this.activeSlot] = true;
+              }
               turnLog.messages.push(`<strong>${displayName(currentActive.pokemon.name)}</strong> used <strong>${moveLabel}</strong>!`);
               
               if (move.damage_class?.name === "status" || !usedPower) {
                 if (MOVE_EFFECTS[move.name]) {
-                  MOVE_EFFECTS[move.name].apply(this, currentActive, this.boss, "player", turnLog);
+                  MOVE_EFFECTS[move.name].apply(this, currentActive, this.boss, "player", turnLog, {
+                    isZMove: step.action === "use-z-move",
+                  });
                   captureNotes();
                 } else {
                   const notImplementedMsg = `${titleCase(move.name)} (status) - Effect not implemented yet.`;
@@ -818,6 +1096,13 @@ export class BattleState extends EventTarget {
                   notesCountBefore = turnLog.notes.length;
                 }
               } else if (move.damage_class?.name !== "status" && usedPower) {
+                const requiredUserType = move.name === "burn-up" ? "fire" : move.name === "double-shock" ? "electric" : "";
+                if (requiredUserType && !this.teamCurrentTypes[this.activeSlot].includes(requiredUserType)) {
+                  turnLog.messages.push("But it failed!");
+                  turnLog.notes.push(`${titleCase(move.name)} failed because the user was not ${titleCase(requiredUserType)} type.`);
+                  captureNotes();
+                  continue;
+                }
                 const attackerAbility = getEffectiveAbility({ slotIndex: this.activeSlot, isBoss: false }, this);
                 const defenderAbility = getEffectiveAbility({ isBoss: true }, this);
                 const attackerItem = getEffectiveItem({ slotIndex: this.activeSlot, isBoss: false, item: currentActive.item }, this);
@@ -833,12 +1118,23 @@ export class BattleState extends EventTarget {
                   defenderMaxHP: this.bossMaxHP,
                   stages: this.teamStages[this.activeSlot],
                   bossStages: this.bossStages,
+                  tarShot: this.volatileEffects.tarShot.boss,
                   isTerastallized: this.terastallized.player[this.activeSlot],
                   teraType: currentActive.teraType || "normal",
                 };
-              const normal = damageRolls(payload);
+              const normal = await this.resolveDamage(payload, this.buildPrivateDamageRequest(
+                "player-to-boss",
+                currentActive,
+                move,
+                attackerAbility,
+                defenderAbility,
+                attackerItem,
+              ));
               const rollResult = selectDamageFromRolls(normal.rolls, this.damageRollMode || "random");
               const dealt = rollResult.damage;
+              const displayedDamage = (this.damageRollMode || "random") === "average"
+                ? normal.myuuAverage
+                : normal.myuuRolls?.[rollResult.index];
 
               // Effectiveness
               if (normal.effectiveness === 0) {
@@ -875,6 +1171,7 @@ export class BattleState extends EventTarget {
               }
 
               turnLog.playerDamage = bossSurvived ? (initialHP - 1) : dealt;
+              turnLog.playerDisplayedDamage = Number.isInteger(displayedDamage) ? displayedDamage : turnLog.playerDamage;
               turnLog.bossHPAfter = this.bossHP;
 
               turnLog.playerDamageDetails = {
@@ -889,16 +1186,8 @@ export class BattleState extends EventTarget {
                 level: currentActive.level,
                 originalPower: normal.basePower || 50,
                 usedPower: normal.usedPower,
-                attackStat: normal.attackStat,
-                defenseStat: normal.defenseStat,
-                baseDamageBeforeModifier: normal.baseDamageBeforeModifier,
                 criticalModifier: normal.criticalModifier,
-                stab: normal.stab,
                 effectiveness: normal.effectiveness,
-                burnModifier: normal.burnModifier,
-                otherModifiers: normal.otherModifiers,
-                itemFinalModifier: normal.itemFinalModifier,
-                attackStatModifier: normal.attackStatModifier,
                 attackerAbility,
                 attackerItem: currentActive.item
               };
@@ -910,6 +1199,17 @@ export class BattleState extends EventTarget {
                 turnLog.notes.push(`${displayName(currentActive.pokemon.name)} consumed its ${titleCase(attackerItem)}!`);
                 captureNotes();
               }
+
+              applyDamagingMoveAfterEffects(
+                this,
+                currentActive,
+                this.boss,
+                "player",
+                turnLog,
+                move.name,
+                normal.effectiveness !== 0,
+              );
+              captureNotes();
 
               if (bossSurvived) {
                 turnLog.notes.push(`${bossDisplayName}'s Sturdy activated!`);
@@ -926,7 +1226,9 @@ export class BattleState extends EventTarget {
       }
       } else {
         // Boss's turn
-        if (this.bossHP <= 0) continue;
+        if (this.bossHP <= 0 || this.teamHP[this.activeSlot] <= 0) continue;
+        step.move = resolveDynamicMovePower(step.move, this.bossStages);
+        step.move = this.resolveActionMove(step.move, "boss", turnLog);
 
         if (step.action === "use-move" && step.move) {
           const currentActive = this.team[this.activeSlot];
@@ -947,6 +1249,13 @@ export class BattleState extends EventTarget {
               notesCountBefore = turnLog.notes.length;
             }
           } else if (step.move.damage_class?.name !== "status" && usedPower) {
+            const requiredUserType = step.move.name === "burn-up" ? "fire" : step.move.name === "double-shock" ? "electric" : "";
+            if (requiredUserType && !this.bossCurrentTypes.includes(requiredUserType)) {
+              turnLog.messages.push("But it failed!");
+              turnLog.notes.push(`${titleCase(step.move.name)} failed because the user was not ${titleCase(requiredUserType)} type.`);
+              captureNotes();
+              continue;
+            }
             const attackerAbility = getEffectiveAbility({ isBoss: true }, this);
             const defenderAbility = getEffectiveAbility({ slotIndex: this.activeSlot, isBoss: false }, this);
             const payload = {
@@ -961,10 +1270,17 @@ export class BattleState extends EventTarget {
               defenderMaxHP: currentActive.stats.hp,
               stages: this.bossStages,
               bossStages: this.teamStages[this.activeSlot],
+              tarShot: this.volatileEffects.tarShot.player[this.activeSlot],
               isTerastallized: this.terastallized.boss,
               teraType: "normal",
             };
-            const normal = damageRolls(payload);
+            const normal = await this.resolveDamage(payload, this.buildPrivateDamageRequest(
+              "boss-to-player",
+              currentActive,
+              step.move,
+              attackerAbility,
+              defenderAbility,
+            ));
             const rollResult = selectDamageFromRolls(normal.rolls, this.damageRollMode || "random");
             const dealt = rollResult.damage;
 
@@ -1028,16 +1344,8 @@ export class BattleState extends EventTarget {
                level: 100,
                originalPower: normal.basePower || 50,
                usedPower: normal.usedPower,
-               attackStat: normal.attackStat,
-               defenseStat: normal.defenseStat,
-               baseDamageBeforeModifier: normal.baseDamageBeforeModifier,
                criticalModifier: normal.criticalModifier,
-               stab: normal.stab,
                effectiveness: normal.effectiveness,
-               burnModifier: normal.burnModifier,
-               otherModifiers: normal.otherModifiers,
-               itemFinalModifier: normal.itemFinalModifier,
-               attackStatModifier: normal.attackStatModifier,
                attackerAbility,
                attackerItem: ""
              };
@@ -1052,6 +1360,17 @@ export class BattleState extends EventTarget {
                });
                notesCountBefore = turnLog.notes.length;
              }
+
+             applyDamagingMoveAfterEffects(
+               this,
+               currentActive,
+               this.boss,
+               "boss",
+               turnLog,
+               step.move.name,
+               normal.effectiveness !== 0,
+             );
+             captureNotes();
 
             if (this.teamHP[this.activeSlot] <= 0) {
               this.faintedAlliesCount += 1;
@@ -1079,6 +1398,10 @@ export class BattleState extends EventTarget {
         }
       }
     }
+
+    // End-of-turn volatile effects resolve after both actions.
+    this.processEndOfTurnEffects(turnLog);
+    captureNotes();
 
     // Post-turn effects (healing, leftovers, shell bell, sitrus berry)
     if (this.teamHP[this.activeSlot] > 0) {
@@ -1179,6 +1502,8 @@ export class BattleState extends EventTarget {
     const prevActiveSlot = this.activeSlot;
 
     // Reset current active slot stat boosts, overrides, and types
+    this.recordSplitEvent("reset-player", prevActiveSlot);
+    this.clearPlayerVolatileEffects(prevActiveSlot);
     this.resetSlotStats(prevActiveSlot);
     this.teamStages[prevActiveSlot] = emptyStages();
     this.teamCurrentTypes[prevActiveSlot] = this.team[prevActiveSlot].pokemon.types.map(({ type }) => type.name);
@@ -1277,6 +1602,21 @@ export function getStage(battlerRef, statKey, state) {
   }
   const idx = (battlerRef && typeof battlerRef.slotIndex === "number") ? battlerRef.slotIndex : state.activeSlot;
   return state.teamStages[idx]?.[statKey] || 0;
+}
+
+export function getBattlerStages(battlerRef, state) {
+  const isBoss = (battlerRef === "boss" || battlerRef === state.boss || (battlerRef && battlerRef.isBoss));
+  if (isBoss) return state.bossStages;
+  const idx = (battlerRef && typeof battlerRef.slotIndex === "number") ? battlerRef.slotIndex : state.activeSlot;
+  return state.teamStages[idx] || emptyStages();
+}
+
+export function getTotalPositiveStages(battlerRef, state) {
+  return totalPositiveStagesFromStages(getBattlerStages(battlerRef, state));
+}
+
+export function getStoredPowerLikeBasePower(battlerRef, state) {
+  return storedPowerLikeBasePowerFromStages(getBattlerStages(battlerRef, state));
 }
 
 export function setStage(battlerRef, statKey, value, state) {

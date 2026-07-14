@@ -1,6 +1,7 @@
 import { applyStage } from "./stages.js";
 import { typeEffectiveness } from "../data/type-chart.js";
 import { ITEM_EFFECTS } from "../data/item-effects.js";
+import { tarShotModifier } from "./type-mechanics.js";
 
 export const RANDOM_ROLLS = Array.from({ length: 16 }, (_, i) => (85 + i) / 100);
 
@@ -90,6 +91,7 @@ export function damageRolls({
   bossStages,
   critical = false,
   burned = false,
+  tarShot = false,
   isTerastallized = false,
   teraType = "normal"
 }) {
@@ -250,7 +252,9 @@ export function damageRolls({
 
   // 12. Final item modifiers
   const itemFinalModifiers = itemEffects.itemFinalModifier;
-  const otherModifiers = technicianModifier * tintedLensModifier * defenderAbilityModifier;
+  const tarShotDamageModifier = tarShotModifier(moveType, tarShot);
+  if (tarShotDamageModifier > 1) abilityNotes.push("Tar Shot: Fire damage 2.0x");
+  const otherModifiers = technicianModifier * tintedLensModifier * defenderAbilityModifier * tarShotDamageModifier;
 
   const baseDamage = Math.floor(
     Math.floor(
@@ -275,6 +279,7 @@ export function damageRolls({
     itemFinalModifier: itemEffects.itemFinalModifier,
     itemNotes: itemEffects.notes,
     abilityNotes,
+    tarShotModifier: tarShotDamageModifier,
     // Audit fields
     attackStat: attack,
     defenseStat: defense,

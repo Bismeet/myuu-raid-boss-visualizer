@@ -83,7 +83,7 @@ if (state.teamHP[0] !== state.team[0].stats.hp) throw new Error("Active Pokémon
 console.log("Battle initialized successfully.");
 
 // 2. Execute Swords Dance (+2 Atk)
-state.executeTurn("use-move", 0, 0, "do-nothing", 0);
+await state.executeTurn("use-move", 0, 0, "do-nothing", 0);
 if (state.currentTurn !== 2) throw new Error("Turn should advance to 2.");
 if (state.teamStages[0].atk !== 2) throw new Error(`Active Pokémon Atk stage should be +2, got ${state.teamStages[0].atk}`);
 
@@ -91,7 +91,7 @@ console.log("Swords Dance executed and stages modified.");
 
 // 3. Execute Belly Drum (Atk maximized to +6, loses 50% HP)
 const hpBeforeDrum = state.teamHP[0];
-state.executeTurn("use-move", 1, 0, "do-nothing", 0);
+await state.executeTurn("use-move", 1, 0, "do-nothing", 0);
 if (state.teamStages[0].atk !== 6) throw new Error("Active Pokémon Atk stage should be +6.");
 const expectedHpAfterDrum = hpBeforeDrum - Math.floor(state.team[0].stats.hp / 2);
 if (state.teamHP[0] !== expectedHpAfterDrum) {
@@ -109,7 +109,7 @@ if (state.teamHP[0] !== hpBeforeDrum) throw new Error("HP should be reverted.");
 console.log("Undo Turn reverted state successfully.");
 
 // 5. Baton Pass to Slot 1 (active slot 1)
-state.executeTurn("baton-pass", 2, 1, "do-nothing", 0);
+await state.executeTurn("baton-pass", 2, 1, "do-nothing", 0);
 if (state.activeSlot !== 1) throw new Error("Active slot should change to 1.");
 if (state.teamStages[1].atk !== 2) throw new Error(`Boosts should transfer to slot 1, got ${state.teamStages[1].atk}`);
 if (state.teamStages[0].atk !== 0) throw new Error("Boosts should clear from previous active slot.");
@@ -119,7 +119,7 @@ console.log("Baton Pass transferred stages successfully.");
 // 6. Boss attacks back (damage resolved against active slot 1)
 const hpBeforeBossAttack = state.teamHP[1];
 // Boss uses Psystrike
-state.executeTurn("use-move", 0, 0, "use-move", 0);
+await state.executeTurn("use-move", 0, 0, "use-move", 0);
 if (state.teamHP[1] >= hpBeforeBossAttack) {
   throw new Error(`Boss attack should deal damage to active slot 1. Before: ${hpBeforeBossAttack}, After: ${state.teamHP[1]}`);
 }
@@ -140,21 +140,21 @@ if (state.bossCurrentTypes.length !== 1 || state.bossCurrentTypes[0] !== "psychi
 }
 
 // 6.5.1 Player uses Trick-or-Treat on boss
-state.executeTurn("use-move", 0, 0, "do-nothing", 0);
+await state.executeTurn("use-move", 0, 0, "do-nothing", 0);
 if (!state.bossCurrentTypes.includes("psychic") || !state.bossCurrentTypes.includes("ghost")) {
   throw new Error("Boss should gain ghost typing after Trick-or-Treat.");
 }
 console.log("Trick-or-Treat added Ghost type to boss successfully.");
 
 // 6.5.2 Player uses Soak on boss
-state.executeTurn("use-move", 1, 0, "do-nothing", 0);
+await state.executeTurn("use-move", 1, 0, "do-nothing", 0);
 if (state.bossCurrentTypes.length !== 1 || state.bossCurrentTypes[0] !== "water") {
   throw new Error(`Boss types should become water only, got ${state.bossCurrentTypes.join("/")}`);
 }
 console.log("Soak changed boss type to water successfully.");
 
 // 6.5.3 Player uses Magic Powder on boss
-state.executeTurn("use-move", 2, 0, "do-nothing", 0);
+await state.executeTurn("use-move", 2, 0, "do-nothing", 0);
 if (state.bossCurrentTypes.length !== 1 || state.bossCurrentTypes[0] !== "psychic") {
   throw new Error(`Boss types should become psychic only, got ${state.bossCurrentTypes.join("/")}`);
 }
@@ -162,14 +162,14 @@ console.log("Magic Powder changed boss type to psychic successfully.");
 
 // Boss uses Soak on player
 state.bossMoves[1] = { name: "soak", type: { name: "water" }, damage_class: { name: "status" } };
-state.executeTurn("use-move", 3, 0, "use-move", 1);
+await state.executeTurn("use-move", 3, 0, "use-move", 1);
 if (state.teamCurrentTypes[0].length !== 1 || state.teamCurrentTypes[0][0] !== "water") {
   throw new Error(`Player Pokémon type should become water after Soak from boss, got ${state.teamCurrentTypes[0].join("/")}`);
 }
 console.log("Boss Soak changed player active Pokémon type to Water successfully.");
 
 // 6.5.5 Player switches out (reverting player type changes)
-state.executeTurn("switch", 3, 1, "do-nothing", 0);
+await state.executeTurn("switch", 3, 1, "do-nothing", 0);
 if (state.teamCurrentTypes[0].length !== 1 || state.teamCurrentTypes[0][0] !== "normal") {
   throw new Error(`Switching out should restore player original types, got ${state.teamCurrentTypes[0].join("/")}`);
 }

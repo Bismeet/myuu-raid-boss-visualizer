@@ -76,7 +76,7 @@ console.log("PASS: getBossDisplayName resolves selected boss Latias");
 // =============================================
 // Turn 1: Speed Swap
 // =============================================
-state.executeTurn(
+await state.executeTurn(
   "use-move",
   0, // index of speed-swap
   null,
@@ -135,7 +135,7 @@ console.log("PASS: No duplicate 'used Speed Swap' lines");
 // =============================================
 // Turn 2: Guard Split
 // =============================================
-state.executeTurn(
+await state.executeTurn(
   "use-move",
   1, // index of guard-split
   null,
@@ -168,7 +168,7 @@ console.log("PASS: Boss 'did nothing' message present");
 // =============================================
 state.bossMoves = [{ name: "dragon-pulse", power: 185, basePower: 185, type: { name: "dragon" }, damage_class: { name: "special" } }, null, null, null];
 
-state.executeTurn(
+await state.executeTurn(
   "use-move",
   2, // shadow-ball
   null,

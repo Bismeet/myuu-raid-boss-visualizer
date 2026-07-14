@@ -48,6 +48,6 @@ const manualTypes = resolveQuickCalcBossTypes({
   manualType2: "ground",
   forestsCurse: true,
 });
-expectTypes(manualTypes, ["dark", "ground", "grass"], "Manual boss types must still receive Forest's Curse");
+expectTypes(manualTypes, ["dark", "ground"], "Manual boss types must override move-driven type changes");
 
 console.log("Quick Calc type-effectiveness checks passed.");

@@ -1,9 +1,4 @@
-import {
-  calculateQuickRaidDamage,
-  safeErrorDetails,
-  secretNumber,
-  titleCase,
-} from "./_private/raid-calculator.js";
+import { calculateBattleRaidDamage, safeErrorDetails } from "./_private/raid-calculator.js";
 
 function parseBody(request) {
   if (request.body && typeof request.body === "object") return request.body;
@@ -21,16 +16,11 @@ export default async function handler(request, response) {
   }
 
   try {
-    const result = await calculateQuickRaidDamage(parseBody(request));
-    const damageCap = secretNumber("MYUU_DAMAGE_CAP");
-    return response.status(200).json({
-      summary: `${titleCase(result.attackerName)} using ${titleCase(result.moveName)} vs ${titleCase(result.bossName)}`,
-      actualDamageRange: `${result.actualMin.toLocaleString("en-US")} - ${result.actualMax.toLocaleString("en-US")}`,
-      myuuDamageRange: `${(result.actualMin % damageCap).toLocaleString("en-US")} - ${(result.actualMax % damageCap).toLocaleString("en-US")}`,
-    });
+    const result = await calculateBattleRaidDamage(parseBody(request));
+    return response.status(200).json(result);
   } catch (error) {
     const unavailable = error?.message === "SERVER_CONFIG_UNAVAILABLE";
-    console.error("[quick-calc api] request failed", safeErrorDetails(error));
+    console.error("[battle-damage api] request failed", safeErrorDetails(error));
     return response.status(unavailable ? 503 : 400).json({
       error: unavailable ? "Server calculation unavailable" : "Unable to calculate damage",
     });

@@ -1,5 +1,5 @@
 import { getItem, getMove, getPokemon } from "../api/pokeapi.js";
-import { createBuild } from "../core/battle-state.js";
+import { createBuild, normalizeVolatileEffects } from "../core/battle-state.js";
 import { calculateBossStats, calculatePokemonStats } from "../core/stats.js";
 import { NATURES } from "../data/natures.js";
 import { emptyStages } from "../core/stages.js";
@@ -196,6 +196,9 @@ export class SetupPersistence extends EventTarget {
         bossStages: { ...this.state.bossStages },
         faintedAlliesCount: this.state.faintedAlliesCount,
         battleLog: [...this.state.battleLog],
+        awaitingForcedSwitch: this.state.awaitingForcedSwitch,
+        splitEvents: this.state.splitEvents.map((event) => ({ ...event })),
+        volatileEffects: JSON.parse(JSON.stringify(this.state.volatileEffects)),
         
         // Speed overrides
         playerSpeedOverrides: [...this.state.playerSpeedOverrides],
@@ -262,6 +265,12 @@ export class SetupPersistence extends EventTarget {
             player: [...s.abilityOverridesSnapshot.player],
             boss: s.abilityOverridesSnapshot.boss
           } : null,
+          volatileEffectsSnapshot: s.volatileEffectsSnapshot
+            ? JSON.parse(JSON.stringify(s.volatileEffectsSnapshot))
+            : null,
+          splitEventsSnapshot: Array.isArray(s.splitEventsSnapshot)
+            ? s.splitEventsSnapshot.map((event) => ({ ...event }))
+            : [],
         })),
         
         needsResume: this.state.needsResume,
@@ -412,6 +421,11 @@ export class SetupPersistence extends EventTarget {
       this.state.bossStages = battle.bossStages ? { ...battle.bossStages } : emptyStages();
       this.state.faintedAlliesCount = Math.max(0, Number(battle.faintedAlliesCount) || 0);
       this.state.battleLog = Array.isArray(battle.battleLog) ? [...battle.battleLog] : [];
+      this.state.awaitingForcedSwitch = Boolean(battle.awaitingForcedSwitch);
+      this.state.splitEvents = Array.isArray(battle.splitEvents)
+        ? battle.splitEvents.map((event) => ({ kind: event.kind, slot: Number(event.slot) || 0 }))
+        : [];
+      this.state.volatileEffects = normalizeVolatileEffects(battle.volatileEffects);
       
       // Speed overrides
       this.state.playerSpeedOverrides = Array.isArray(battle.playerSpeedOverrides) ? [...battle.playerSpeedOverrides] : [null, null, null, null, null, null];
@@ -512,6 +526,9 @@ export class SetupPersistence extends EventTarget {
         player: [false, false, false, false, false, false],
         boss: false
       };
+      this.state.awaitingForcedSwitch = false;
+      this.state.splitEvents = [];
+      this.state.volatileEffects = normalizeVolatileEffects();
       this.state.damageRollMode = localStorage.getItem("myuu_raid_damage_roll_mode") || "random";
     }
 

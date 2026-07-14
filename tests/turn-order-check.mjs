@@ -58,7 +58,7 @@ state.startBattle();
 // Turn 1: Mewtwo is faster (587 vs 18).
 // Mewtwo moves first, then Abra uses Speed Swap.
 // Wait, to verify Mewtwo moves first, we let Mewtwo use psystrike and Abra use Speed Swap.
-state.executeTurn("use-move", 0, 0, "use-move", 0);
+await state.executeTurn("use-move", 0, 0, "use-move", 0);
 const log1 = state.battleLog[0];
 console.log(`T1: Player moved first? ${log1.playerMovedFirst}`);
 if (log1.playerMovedFirst) {
@@ -67,7 +67,7 @@ if (log1.playerMovedFirst) {
 
 // Turn 2: Abra has Mewtwo's Speed raw value (587), Mewtwo has Abra's Speed raw value (18).
 // Abra should move first now!
-state.executeTurn("use-move", 2, 0, "use-move", 0); // Abra uses Teleport
+await state.executeTurn("use-move", 2, 0, "use-move", 0); // Abra uses Teleport
 const log2 = state.battleLog[1];
 console.log(`T2: Player moved first? ${log2.playerMovedFirst}`);
 if (!log2.playerMovedFirst) {
@@ -84,7 +84,7 @@ state.teamHP[0] = 1; // set HP to 1 after startBattle() so it doesn't get overwr
 // Turn 1: Abra HP is 1/191. Custap Berry is held.
 // Abra uses priority 0 move (Teleport). Mewtwo uses priority 0 move (Psystrike).
 // Custap Berry should activate and Abra should move first!
-state.executeTurn("use-move", 2, 0, "use-move", 0);
+await state.executeTurn("use-move", 2, 0, "use-move", 0);
 const log3 = state.battleLog[0];
 console.log(`T1 (Custap): Player moved first? ${log3.playerMovedFirst}`);
 if (!log3.playerMovedFirst) {
@@ -102,7 +102,7 @@ if (state.team[0].item !== "Custap Berry") {
 }
 
 // Turn 2: Custap is consumed. Mewtwo should move first again.
-state.executeTurn("use-move", 2, 0, "use-move", 0);
+await state.executeTurn("use-move", 2, 0, "use-move", 0);
 const log4 = state.battleLog[1];
 console.log(`T2 (Custap): Player moved first? ${log4.playerMovedFirst}`);
 if (log4.playerMovedFirst) {
@@ -114,7 +114,7 @@ state.resetBattle();
 state.startBattle();
 // Abra uses Quick Attack (+1 priority). Mewtwo uses Psystrike (0 priority).
 // Abra should move first!
-state.executeTurn("use-move", 1, 0, "use-move", 0);
+await state.executeTurn("use-move", 1, 0, "use-move", 0);
 const log5 = state.battleLog[0];
 console.log(`T1 (Priority): Player moved first? ${log5.playerMovedFirst}`);
 if (!log5.playerMovedFirst) {
@@ -126,7 +126,7 @@ if (!log5.playerMovedFirst) {
 state.teamHP[0] = 0;
 state.awaitingForcedSwitch = true;
 try {
-  state.executeTurn("use-move", 0, 0, "do-nothing", 0);
+  await state.executeTurn("use-move", 0, 0, "do-nothing", 0);
   throw new Error("Should have thrown error for executing turn when active Pokémon is fainted.");
 } catch (e) {
   console.log("Caught expected error for fainted turn execution:", e.message);

@@ -10,6 +10,7 @@ import { NATURES, natureDropdownLabel } from "../data/natures.js";
 import { calculatePokemonStats, STAT_KEYS } from "../core/stats.js";
 import { copyText, displayName, fallbackSprite, spriteUrl, titleCase } from "../utils/format.js";
 import { ABILITY_EFFECTS } from "../data/ability-effects.js";
+import { MOVE_MECHANICS_AUDIT } from "../data/move-effects.js";
 import { openSearchDropdown, setupSearchDropdownController } from "./search-dropdown.js";
 
 const TERA_TYPES = [
@@ -38,11 +39,12 @@ const CURATED_ITEMS = [
   "silk-scarf", "charcoal", "mystic-water", "magnet", "miracle-seed", "never-melt-ice",
   "black-belt", "poison-barb", "soft-sand", "sharp-beak", "twisted-spoon", "silver-powder",
   "hard-stone", "spell-tag", "dragon-fang", "black-glasses", "metal-coat", "fairy-feather",
-  "normalium-z",
+  "normalium-z", "ghostium-z",
 ];
 
 const ITEM_EFFECT_DESCRIPTIONS = {
   "normalium-z": "Normalium Z — Allows one Normal-type Z-Move. Z-Belly Drum restores HP before using Belly Drum.",
+  "ghostium-z": "Ghostium Z — Allows Z-Trick-or-Treat to raise all stats before adding Ghost type.",
   "life-orb": "Damage ×1.3",
   "choice-band": "Physical Attack ×1.5",
   "choice-specs": "Special Attack ×1.5",
@@ -221,6 +223,7 @@ export class TeamBuilder {
   moveSelectorMarkup(move, index, smeargleMode) {
     const basePower = move?.basePower ?? move?.power ?? null;
     const customPower = move?.customPower ?? basePower;
+    const mechanics = move ? MOVE_MECHANICS_AUDIT[move.name] : null;
     return `<div class="selector-search move-selector">
       <label><span>Move ${index + 1}</span><input data-move-search="${index}" value="${move ? titleCase(move.name) : ""}" placeholder="${smeargleMode ? "Search all moves…" : "Search learnset…"}" autocomplete="off" aria-expanded="false"></label>
       <div class="inline-results selector-results hidden" data-move-results="${index}"></div>
@@ -231,6 +234,7 @@ export class TeamBuilder {
               <span>Base <strong>${basePower ?? "—"}</strong></span>
               <label><span>Custom power</span><input type="number" min="0" max="9999" step="1" data-custom-power="${index}" value="${customPower ?? ""}" placeholder="—"></label>
             </div>
+            ${mechanics ? `<small class="move-mechanics-status status-${mechanics.status.toLowerCase().replaceAll(" ", "-")}"><strong>${mechanics.status}</strong> — ${mechanics.description}</small>` : ""}
           </div>`
         : `<small>${smeargleMode ? "Global Sketch-compatible move search" : "Filtered to this Pokémon's learnset"}</small>`}
     </div>`;

@@ -200,6 +200,12 @@ export const ITEM_EFFECTS = {
     name: "Normalium Z",
     description: "Allows one Normal-type Z-Move. Z-Belly Drum restores HP before using Belly Drum.",
     hooks: {}
+  },
+  "ghostium-z": {
+    id: "ghostium-z",
+    name: "Ghostium Z",
+    description: "Allows Z-Trick-or-Treat to raise all stats before adding Ghost type.",
+    hooks: {}
   }
 };
 

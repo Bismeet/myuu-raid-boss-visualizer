@@ -1522,6 +1522,98 @@ tbody tr:nth-child(even) { background:rgba(233,243,226,.5); }
   .battle-mode .battle-callout span { font-size: 8px; }
 }
 
+/* Live stat-stage badges */
+.battle-stage-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  max-width: 100%;
+  margin-top: 3px;
+}
+.boss-stage-badges { justify-content: flex-end; }
+.battle-stage-badges .stage-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 17px;
+  padding: 2px 6px;
+  border: 1px solid rgba(255,255,255,.58);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: .01em;
+  box-shadow: 0 1px 2px rgba(20,45,36,.22);
+  text-shadow: 0 1px rgba(0,0,0,.18);
+  white-space: nowrap;
+}
+.battle-stage-badges .stage-badge.positive {
+  background: #2c9b58;
+  color: #f5fff8;
+}
+.battle-stage-badges .stage-badge.negative {
+  background: #c55353;
+  color: #fff8f8;
+}
+
+.current-type-label,
+.quick-current-types > span,
+.quick-type-summary > span {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.type-badge.type-typeless { background: #67717b; color: #fff; }
+.quick-current-types,
+.quick-type-summary {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+}
+.quick-type-summary {
+  align-items: center;
+  background: color-mix(in srgb, var(--cyan) 8%, transparent);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  margin-top: 12px;
+  padding: 10px;
+}
+.quick-type-summary small { color: var(--danger); font-weight: 800; }
+.quick-advanced-type {
+  border-top: 1px solid var(--border-soft);
+  margin-top: 12px;
+  padding-top: 10px;
+}
+.quick-advanced-type summary {
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+.quick-advanced-type[open] summary { margin-bottom: 10px; }
+.move-mechanics-status {
+  border-left: 3px solid var(--success);
+  color: var(--muted);
+  display: block;
+  line-height: 1.4;
+  margin-top: 8px;
+  padding-left: 8px;
+}
+.move-mechanics-status.status-partial { border-left-color: var(--amber); }
+.move-mechanics-status.status-missing { border-left-color: var(--danger); }
+
+@media(max-width:520px) {
+  .battle-stage-badges { gap: 2px; }
+  .battle-stage-badges .stage-badge {
+    min-height: 15px;
+    padding: 2px 4px;
+    font-size: 8px;
+  }
+}
+
 /* Final interaction polish */
 :root {
   --space-1: 4px;

@@ -68,7 +68,7 @@ async function testSturdyAndSash() {
   state.startBattle();
 
   // Turn 1: Mewtwo attacks Shieldon. Sturdy should activate!
-  state.executeTurn("use-move", 0, 0, "use-move", 0);
+  await state.executeTurn("use-move", 0, 0, "use-move", 0);
   const log1 = state.battleLog[0];
   console.log("Sturdy T1 Log notes:", log1.notes);
 
@@ -80,7 +80,7 @@ async function testSturdyAndSash() {
   }
 
   // Turn 2: Mewtwo attacks Shieldon again. Since HP is not full, it faints.
-  state.executeTurn("use-move", 0, 0, "use-move", 0);
+  await state.executeTurn("use-move", 0, 0, "use-move", 0);
   const log2 = state.battleLog[1];
   console.log("Sturdy T2 Log notes:", log2.notes);
 
@@ -104,7 +104,7 @@ async function testSturdyAndSash() {
   state2.bossMoves[0] = { name: "close-combat", power: 120, type: { name: "fighting" }, damage_class: { name: "physical" } };
   state2.startBattle();
 
-  state2.executeTurn("use-move", 0, 0, "use-move", 0);
+  await state2.executeTurn("use-move", 0, 0, "use-move", 0);
   const log3 = state2.battleLog[0];
   console.log("Sturdy+Sash T1 Log notes:", log3.notes);
 
@@ -141,7 +141,7 @@ async function testZBellyDrum() {
   const maxHP = state.team[0].stats.hp;
 
   // Execute Z-Belly Drum
-  state.executeTurn("use-z-move", 0, 0, "do-nothing", 0);
+  await state.executeTurn("use-z-move", 0, 0, "do-nothing", 0);
   const log1 = state.battleLog[0];
   console.log("Z-Belly Drum Log notes:", log1.notes);
 

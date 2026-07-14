@@ -343,7 +343,7 @@ async function testSturdyAndUnburden() {
   // Turn 1: Boss attacks Shieldon with Close Combat.
   // Mewtwo's attack will deal lethal damage to Shieldon, which is at full HP.
   // Shieldon has Sturdy, so it should survive at 1 HP.
-  state.executeTurn("use-move", 0, 0, "use-move", 0);
+  await state.executeTurn("use-move", 0, 0, "use-move", 0);
 
   const log1 = state.battleLog[0];
   console.log("T1 Log notes:", log1.notes);
@@ -359,7 +359,7 @@ async function testSturdyAndUnburden() {
 
   // Turn 2: Mewtwo attacks Shieldon again.
   // Since Shieldon is at 1 HP (not full HP), Sturdy should NOT activate and it should faint.
-  state.executeTurn("use-move", 0, 0, "use-move", 0);
+  await state.executeTurn("use-move", 0, 0, "use-move", 0);
 
   const log2 = state.battleLog[1];
   console.log("T2 Log notes:", log2.notes);
@@ -393,7 +393,7 @@ async function testSturdyAndUnburden() {
   state2.startBattle();
 
   // Mewtwo attacks Shieldon with Mold Breaker. Sturdy should be bypassed!
-  state2.executeTurn("use-move", 0, 0, "use-move", 0);
+  await state2.executeTurn("use-move", 0, 0, "use-move", 0);
   const log3 = state2.battleLog[0];
   console.log("Mold Breaker T1 Log notes:", log3.notes);
 
@@ -421,7 +421,7 @@ async function testSturdyAndUnburden() {
   console.log("Unburden original speed:", originalSpeed);
 
   // Take lethal damage to consume Focus Sash
-  state3.executeTurn("use-move", 0, 0, "use-move", 0);
+  await state3.executeTurn("use-move", 0, 0, "use-move", 0);
 
   const log4 = state3.battleLog[0];
   console.log("Unburden T1 Log notes:", log4.notes);

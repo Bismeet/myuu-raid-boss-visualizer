@@ -1,5 +1,5 @@
 import { damageRolls } from "./damage.js";
-import { emptyStages } from "./stages.js";
+import { emptyStages, resolveDynamicMovePower } from "./stages.js";
 
 const SETUP = {
   "swords-dance": { atk: 2 },
@@ -29,7 +29,6 @@ export class Simulator {
       const action = planned.action;
       let damage = { min: 0, max: 0 };
       let move = build.moves.find((item) => item?.name === action) || null;
-      const movePower = move?.customPower ?? move?.basePower ?? move?.power ?? null;
 
       if (!build.pokemon) {
         rows.push(this.row(planned, build, move, damage, hp));
@@ -51,7 +50,13 @@ export class Simulator {
         const atk = Math.floor((build.stats.atk + bossStats.atk) / 2);
         const spa = Math.floor((build.stats.spa + bossStats.spa) / 2);
         bossStats.atk = atk; bossStats.spa = spa;
-      } else if (move?.damage_class?.name !== "status" && movePower) {
+      } else {
+        move = resolveDynamicMovePower(move, stages);
+        const movePower = move?.customPower ?? move?.basePower ?? move?.power ?? null;
+        if (move?.damage_class?.name === "status" || !movePower) {
+          rows.push(this.row(planned, build, move, damage, hp));
+          continue;
+        }
         const payload = {
           attacker: build,
           boss: { stats: bossStats, maxHp: state.bossBaseStats.hp },

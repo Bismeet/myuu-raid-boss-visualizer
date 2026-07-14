@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/security-check.mjs"
+    "test": "node tests/security-check.mjs && node tests/move-effects-check.mjs && node tests/battle-state-check.mjs && node tests/type-mechanics-check.mjs && node tests/damage-formula-check.mjs"
   }
 }

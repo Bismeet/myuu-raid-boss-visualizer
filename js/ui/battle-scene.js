@@ -3,6 +3,8 @@ import { compactNumber } from "../utils/format.js";
 import { getAbilityOverride, getEffectiveAbility, getEffectiveSpeed } from "../core/battle-state.js";
 import { ABILITY_EFFECTS } from "../data/ability-effects.js";
 import { applyStage } from "../core/stages.js";
+import { requestBattleDamage } from "../api/battle-damage.js";
+import { renderStageBadges } from "./stage-badges.js";
 
 function getPlayerTooltipHTML(state) {
   const activeMon = state.team[state.activeSlot];
@@ -179,44 +181,6 @@ function formatBattleLogTurnHTML(log, state) {
     html += `<p class="${cssClass}" style="margin: 3px 0;">${msg}</p>`;
   });
 
-  // Collapsible [Damage details] box
-  if (false && (log.playerDamageDetails || log.bossDamageDetails)) {
-    html += `<details style="margin: 6px 0 6px 0;">`;
-    html += `<summary class="chat-details-summary" style="margin:0; cursor:pointer; color:var(--cyan); font-size:10px; font-weight:800; outline:none; user-select:none;">[Damage details]</summary>`;
-    html += `<div class="chat-details-box" style="margin-top: 4px; padding: 6px; border: 1px solid var(--border-soft); border-radius: 4px; background: var(--bg-card); font-size: 10px; line-height: 1.45; color: var(--muted);">`;
-
-    const printDetails = (details, label) => {
-      const rollPercent = Math.round(details.rollPercent * 100);
-      const modeLabel = details.rollMode === "random" ? "" : ` (${titleCase(details.rollMode)} Roll)`;
-      
-      let out = `<div style="margin-bottom: 6px; border-bottom: 1px dashed rgba(255,255,255,0.05); padding-bottom: 4px;">`;
-      out += `<strong style="color:var(--text);">${label} Details:</strong><br>`;
-      out += `• Damage: <strong>${details.damage.toLocaleString()}</strong><br>`;
-      out += `• Range: ${details.minDamage.toLocaleString()}–${details.maxDamage.toLocaleString()} · Roll: ${rollPercent}%${modeLabel}<br>`;
-      out += `• Power: ${details.usedPower}<br>`;
-      out += `• STAB: ${details.stab.toFixed(2)}x<br>`;
-      out += `• Type effectiveness: ${details.effectiveness}x<br>`;
-      out += `• Critical hit multiplier: ${details.criticalModifier.toFixed(2)}x<br>`;
-      out += `• Attack stat used: ${details.attackStat} (Base power: ${details.originalPower})<br>`;
-      out += `• Defense stat used: ${details.defenseStat}<br>`;
-      out += `• Base damage: ${details.baseDamageBeforeModifier}<br>`;
-      out += `• Item multiplier: ${(details.itemFinalModifier || 1.0).toFixed(2)}x (Stat mod: ${(details.attackStatModifier || 1.0).toFixed(2)}x)<br>`;
-      out += `• Ability/Other multiplier: ${(details.otherModifiers || 1.0).toFixed(2)}x<br>`;
-      out += `• Burn multiplier: ${(details.burnModifier || 1.0).toFixed(2)}x<br>`;
-      out += `</div>`;
-      return out;
-    };
-
-    if (log.playerDamageDetails) {
-      html += printDetails(log.playerDamageDetails, displayName(log.playerDamageDetails.attackerName));
-    }
-    if (log.bossDamageDetails) {
-      html += printDetails(log.bossDamageDetails, bossName);
-    }
-
-    html += `</div></details>`;
-  }
-
   html += `</div>`;
   return html;
 }
@@ -225,6 +189,7 @@ export class BattleScene {
   constructor(root, state, simulator) {
     this.root = root;
     this.state = state;
+    this.state.privateDamageResolver = requestBattleDamage;
     this.simulator = simulator;
     this.busy = false;
     this.lastAnimatedTurn = 0;
@@ -539,23 +504,26 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
         `;
       } else {
         const itemSlug = (activeBuild.item || "").toLowerCase().replaceAll(" ", "-");
-        const hasNormaliumZ = itemSlug === "normalium-z";
-        const hasBellyDrum = moves.some((m) => m && m.name === "belly-drum");
+        const zMoveConfig = itemSlug === "normalium-z" && moves.some((m) => m?.name === "belly-drum")
+          ? { move: "belly-drum", label: "Z-Belly Drum", type: "normal", item: "Normalium Z", effect: "Restores HP, then Belly Drum" }
+          : itemSlug === "ghostium-z" && moves.some((m) => m?.name === "trick-or-treat")
+            ? { move: "trick-or-treat", label: "Z-Trick-or-Treat", type: "ghost", item: "Ghostium Z", effect: "Raises all stats, then adds Ghost" }
+            : null;
         const zMoveUnused = !this.state.zMoveUsed.player[activeSlot];
         
         let zMoveButtonHTML = "";
-        if (hasNormaliumZ && hasBellyDrum) {
+        if (zMoveConfig) {
           if (zMoveUnused) {
             zMoveButtonHTML = `
               <div style="margin-top: 10px; border-top: 1px solid var(--border-soft); padding-top: 10px;">
-                <button type="button" id="z-move-btn" ${controlsLocked ? "disabled" : ""} style="width: 100%; border:1px solid var(--border-soft); background:var(--surface-3); border-radius:6px; padding:8px 10px; cursor:pointer; text-align:left; display:flex; flex-direction:column; justify-content:space-between; min-height:48px; color:var(--text); transition:all 0.15s ease;">
+                <button type="button" id="z-move-btn" data-z-move="${zMoveConfig.move}" ${controlsLocked ? "disabled" : ""} style="width: 100%; border:1px solid var(--border-soft); background:var(--surface-3); border-radius:6px; padding:8px 10px; cursor:pointer; text-align:left; display:flex; flex-direction:column; justify-content:space-between; min-height:48px; color:var(--text); transition:all 0.15s ease;">
                   <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
-                    <strong style="font-size:11px; color:#c084fc;">[Z-Belly Drum]</strong>
-                    <span class="type-badge type-normal" style="padding:1px 3px; font-size:7px;">normal</span>
+                    <strong style="font-size:11px; color:#c084fc;">[${zMoveConfig.label}]</strong>
+                    <span class="type-badge type-${zMoveConfig.type}" style="padding:1px 3px; font-size:7px;">${zMoveConfig.type}</span>
                   </div>
                   <div style="display:flex; justify-content:space-between; width:100%; font-size:9px; color:var(--muted); margin-top:2px;">
-                    <span>Normalium Z | Status</span>
-                    <span>Restores HP, then Belly Drum</span>
+                    <span>${zMoveConfig.item} | Status</span>
+                    <span>${zMoveConfig.effect}</span>
                   </div>
                 </button>
               </div>
@@ -629,9 +597,11 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
             <div class="combatant attacker tooltip-anchor" id="player-combatant" style="display:grid; justify-items:start;">
               <div class="nameplate" style="position:static; display:grid; gap:2px; margin-bottom:6px; min-width:140px;">
                 <span style="font-size:11px; font-weight:800;">${displayName(activeBuild.pokemon.name)}</span>
+                <small class="current-type-label">Current Type</small>
                 <div class="type-row">
-                  ${playerTypes.map((t) => `<span class="type-badge type-${t}" style="font-size:7px; padding:1px 3px;">${t}</span>`).join("")}
+                  ${playerTypes.length ? playerTypes.map((t) => `<span class="type-badge type-${t}" style="font-size:7px; padding:1px 3px;">${t}</span>`).join("") : `<span class="type-badge type-typeless" style="font-size:7px; padding:1px 3px;">typeless</span>`}
                 </div>
+                ${renderStageBadges(this.state.teamStages[activeSlot], { side: "player", label: `${displayName(activeBuild.pokemon.name)} stat changes` })}
               </div>
               
               <img id="player-sprite" src="${spriteUrl(activeBuild.pokemon.name)}" data-fallback="${fallbackSprite(activeBuild.pokemon)}" alt="${activeBuild.pokemon.name}" style="width:110px; height:110px; object-fit:contain; transition: transform 0.25s ease; ${isFainted ? 'opacity: 0.3; filter: grayscale(1);' : ''}">
@@ -651,9 +621,11 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                   <strong style="font-size:11px;">${getBossDisplayName(this.state)}</strong>
                 </div>
+                <small class="current-type-label">Current Type</small>
                 <div class="type-row" style="justify-content:flex-end;">
-                  ${bossTypes.map((t) => `<span class="type-badge type-${t}" style="font-size:7px; padding:1px 3px;">${t}</span>`).join("")}
+                  ${bossTypes.length ? bossTypes.map((t) => `<span class="type-badge type-${t}" style="font-size:7px; padding:1px 3px;">${t}</span>`).join("") : `<span class="type-badge type-typeless" style="font-size:7px; padding:1px 3px;">typeless</span>`}
                 </div>
+                ${renderStageBadges(this.state.bossStages, { side: "boss", label: `${getBossDisplayName(this.state)} stat changes` })}
               </div>
               
               <img id="boss-sprite" src="${spriteUrl(boss.name)}" data-fallback="${fallbackSprite(boss)}" alt="${boss.name}" style="width:110px; height:110px; object-fit:contain; transition: transform 0.25s ease; ${bossHp <= 0 ? 'opacity: 0.3; filter: grayscale(1);' : ''}">
@@ -853,7 +825,8 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
       zMoveBtn.disabled = true;
       const activeBuild = state.team[state.activeSlot];
       if (activeBuild && activeBuild.moves) {
-        const idx = activeBuild.moves.findIndex((m) => m && m.name === "belly-drum");
+        const zMoveName = zMoveBtn.dataset.zMove;
+        const idx = activeBuild.moves.findIndex((m) => m && m.name === zMoveName);
         if (idx >= 0) {
           this.playerAction = "use-z-move";
           this.selectedMoveIndex = idx;
@@ -943,16 +916,22 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
     const bossAction = this.bossAction;
     const bossMoveIndex = this.bossMoveIndex;
 
-    return this.resolveTurnSafe(() => {
-      this.state.executeTurn(
+    return this.resolveTurnSafe(async () => {
+      const historyLength = this.state.history.length;
+      try {
+        await this.state.executeTurn(
         action,
         moveIndex,
         switchSlot,
         bossAction,
         bossMoveIndex,
         shouldTera
-      );
-      this.shouldTerastallize = false;
+        );
+        this.shouldTerastallize = false;
+      } catch (error) {
+        if (this.state.history.length > historyLength) this.state.undoLastTurn();
+        throw error;
+      }
     });
   }
 
@@ -1022,11 +1001,11 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
       const playerGoesFirst = log.playerMovedFirst;
       const steps = [];
       if (playerGoesFirst) {
-        steps.push({ side: "player", action: log.playerAction, moveName: log.playerMove, damage: log.playerDamage });
+        steps.push({ side: "player", action: log.playerAction, moveName: log.playerMove, damage: log.playerDisplayedDamage ?? log.playerDamage });
         steps.push({ side: "boss", action: log.bossAction, moveName: log.bossMove, damage: log.bossDamage });
       } else {
         steps.push({ side: "boss", action: log.bossAction, moveName: log.bossMove, damage: log.bossDamage });
-        steps.push({ side: "player", action: log.playerAction, moveName: log.playerMove, damage: log.playerDamage });
+        steps.push({ side: "player", action: log.playerAction, moveName: log.playerMove, damage: log.playerDisplayedDamage ?? log.playerDamage });
       }
 
       for (const step of steps) {
