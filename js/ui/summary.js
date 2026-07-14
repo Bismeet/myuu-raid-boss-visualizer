@@ -1,4 +1,5 @@
 import { compactNumber, displayName, titleCase } from "../utils/format.js";
+import { calculateRaidBossHP } from "../core/stats.js";
 
 const publicNotes = (notes = []) => notes.filter((note) => !/(?:Defense|Sp\. Defense|Attack|Sp\. Attack|Speed|HP)\s*(?:changed|stage|:).*?(?:→|->|\d)/i.test(note));
 
@@ -100,7 +101,7 @@ export class Summary {
     }
 
     const rows = this.state.results;
-    const startHp = this.state.bossBaseStats?.hp || 0;
+    const startHp = this.state.boss ? calculateRaidBossHP(this.state.boss) : 0;
     const remaining = rows.at(-1)?.hp ?? startHp;
     const damage = startHp - remaining;
     this.root.innerHTML = `

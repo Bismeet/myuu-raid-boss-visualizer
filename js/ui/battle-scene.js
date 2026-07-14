@@ -5,6 +5,7 @@ import { ABILITY_EFFECTS } from "../data/ability-effects.js";
 import { applyStage } from "../core/stages.js";
 import { requestBattleDamage } from "../api/battle-damage.js";
 import { renderStageBadges } from "./stage-badges.js";
+import { calculateRaidBossHP } from "../core/stats.js";
 
 function getPlayerTooltipHTML(state) {
   const activeMon = state.team[state.activeSlot];
@@ -352,7 +353,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
 
     // Setup simulator panel if battle is not active
     if (!isBattle) {
-      let maxHp = this.state.bossBaseStats?.hp || 1;
+      let maxHp = this.state.boss ? calculateRaidBossHP(this.state.boss) : 1;
       let hp = maxHp;
       let hpPercent = 100;
       let currentTurnLabel = "Awaiting battle";

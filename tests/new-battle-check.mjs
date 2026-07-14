@@ -1,5 +1,5 @@
 import { BattleState } from "../js/core/battle-state.js";
-import { calculateBossStats, calculatePokemonStats } from "../js/core/stats.js";
+import { calculateBossStats, calculatePokemonStats, calculateRaidBossHP } from "../js/core/stats.js";
 
 console.log("Running New Battle behavior checks...");
 
@@ -73,7 +73,7 @@ if (!state.battleActive) {
 if (state.currentTurn !== 1) {
   throw new Error("New Battle did not reset turn counter to 1.");
 }
-if (state.bossHP !== bossStats.hp) {
+if (state.bossHP !== calculateRaidBossHP(mewtwo) || state.bossMaxHP !== calculateRaidBossHP(mewtwo)) {
   throw new Error("New Battle did not reset boss HP to max.");
 }
 if (state.teamHP[0] !== state.team[0].stats.hp) {

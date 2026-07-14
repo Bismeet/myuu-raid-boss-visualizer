@@ -1,5 +1,6 @@
 import { damageRolls } from "./damage.js";
 import { emptyStages, resolveDynamicMovePower } from "./stages.js";
+import { calculateRaidBossHP } from "./stats.js";
 
 const SETUP = {
   "swords-dance": { atk: 2 },
@@ -19,7 +20,10 @@ export class Simulator {
     const state = this.state;
     const bossStats = { ...state.bossBaseStats };
     const bossStages = emptyStages();
-    let hp = bossStats.hp;
+    const raidBossMaxHp = Array.isArray(state.boss?.stats)
+      ? calculateRaidBossHP(state.boss)
+      : Math.max(1, Number(state.bossMaxHP || state.bossBaseStats?.hp) || 1);
+    let hp = raidBossMaxHp;
     let stages = emptyStages();
     let activeSlot = -1;
     const rows = [];
@@ -59,14 +63,14 @@ export class Simulator {
         }
         const payload = {
           attacker: build,
-          boss: { stats: bossStats, maxHp: state.bossBaseStats.hp },
+          boss: { stats: bossStats, maxHp: raidBossMaxHp },
           move,
           attackerTypes: build.pokemon.types.map(({ type }) => type.name),
           bossTypes: state.boss.types.map(({ type }) => type.name),
           ability: build.ability,
           defenderAbility: state.bossAbility || "",
           defenderHP: hp,
-          defenderMaxHP: state.bossBaseStats.hp,
+          defenderMaxHP: raidBossMaxHp,
           stages,
           bossStages,
         };

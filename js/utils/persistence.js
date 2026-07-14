@@ -1,6 +1,6 @@
 import { getItem, getMove, getPokemon } from "../api/pokeapi.js";
 import { createBuild, normalizeVolatileEffects } from "../core/battle-state.js";
-import { calculateBossStats, calculatePokemonStats } from "../core/stats.js";
+import { calculateBossStats, calculatePokemonStats, calculateRaidBossHP } from "../core/stats.js";
 import { NATURES } from "../data/natures.js";
 import { emptyStages } from "../core/stages.js";
 
@@ -379,10 +379,11 @@ export class SetupPersistence extends EventTarget {
     this.state.manualBossFinalStats = setup.manualBossFinalStats ? { ...setup.manualBossFinalStats } : { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
     this.state.manualBossStages = setup.manualBossStages ? { ...setup.manualBossStages } : emptyStages();
 
-    if (this.state.boss && !setup.manualBossMaxHP) {
+    if (this.state.boss && !this.state.manualBossOverride) {
+      const raidHp = calculateRaidBossHP(this.state.boss);
       this.state.manualBossName = this.state.boss.name;
-      this.state.manualBossHP = this.state.bossStats ? this.state.bossStats.hp : 0;
-      this.state.manualBossMaxHP = this.state.bossStats ? this.state.bossStats.hp : 0;
+      this.state.manualBossHP = raidHp;
+      this.state.manualBossMaxHP = raidHp;
       this.state.manualBossCurrentTypes = this.state.boss.types.map(({ type }) => type.name);
       this.state.manualBossBaseStats = {
         hp: this.state.boss.stats.find(s => s.stat.name === "hp")?.base_stat || 0,
@@ -412,15 +413,30 @@ export class SetupPersistence extends EventTarget {
       this.state.uiMode = battle.uiMode || "battle";
       this.state.currentTurn = Math.max(1, Math.min(22, Number(battle.currentTurn) || 1));
       this.state.activeSlot = Math.max(0, Math.min(5, Number(battle.activeSlot) || 0));
-      this.state.bossHP = Math.max(0, Number(battle.bossHP) || 0);
-      this.state.bossMaxHP = Math.max(0, Number(battle.bossMaxHP) || 0);
+      const savedBossMaxHp = Math.max(1, Number(battle.bossMaxHP) || 1);
+      const raidBossMaxHp = this.state.boss && !this.state.manualBossOverride
+        ? calculateRaidBossHP(this.state.boss)
+        : savedBossMaxHp;
+      const migrateBossHp = (value) => {
+        const savedHp = Number(value);
+        if (!Number.isFinite(savedHp)) return raidBossMaxHp;
+        return Math.max(0, raidBossMaxHp - Math.max(0, savedBossMaxHp - savedHp));
+      };
+      this.state.bossHP = migrateBossHp(battle.bossHP);
+      this.state.bossMaxHP = raidBossMaxHp;
       this.state.bossCurrentTypes = [...battle.bossCurrentTypes];
       this.state.teamHP = [...battle.teamHP];
       this.state.teamCurrentTypes = battle.teamCurrentTypes.map((t) => [...t]);
       this.state.teamStages = Array.isArray(battle.teamStages) ? battle.teamStages.map((s) => ({ ...s })) : Array.from({ length: 6 }, () => emptyStages());
       this.state.bossStages = battle.bossStages ? { ...battle.bossStages } : emptyStages();
       this.state.faintedAlliesCount = Math.max(0, Number(battle.faintedAlliesCount) || 0);
-      this.state.battleLog = Array.isArray(battle.battleLog) ? [...battle.battleLog] : [];
+      this.state.battleLog = Array.isArray(battle.battleLog)
+        ? battle.battleLog.map((turn) => ({
+            ...turn,
+            bossHPBefore: migrateBossHp(turn.bossHPBefore),
+            bossHPAfter: migrateBossHp(turn.bossHPAfter),
+          }))
+        : [];
       this.state.awaitingForcedSwitch = Boolean(battle.awaitingForcedSwitch);
       this.state.splitEvents = Array.isArray(battle.splitEvents)
         ? battle.splitEvents.map((event) => ({ kind: event.kind, slot: Number(event.slot) || 0 }))
@@ -478,7 +494,20 @@ export class SetupPersistence extends EventTarget {
       });
       
       // History
-      this.state.history = Array.isArray(battle.history) ? battle.history : [];
+      this.state.history = Array.isArray(battle.history)
+        ? battle.history.map((snapshot) => ({
+            ...snapshot,
+            bossHP: migrateBossHp(snapshot.bossHP),
+            bossMaxHP: raidBossMaxHp,
+            battleLog: Array.isArray(snapshot.battleLog)
+              ? snapshot.battleLog.map((turn) => ({
+                  ...turn,
+                  bossHPBefore: migrateBossHp(turn.bossHPBefore),
+                  bossHPAfter: migrateBossHp(turn.bossHPAfter),
+                }))
+              : [],
+          }))
+        : [];
       
     } else {
       // No valid battle state - initialize fresh battle state (but keep setup)

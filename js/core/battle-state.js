@@ -4,7 +4,7 @@ import {
   getTotalPositiveStages as totalPositiveStagesFromStages,
   resolveDynamicMovePower,
 } from "./stages.js";
-import { calculatePokemonStats } from "./stats.js";
+import { calculatePokemonStats, calculateRaidBossHP } from "./stats.js";
 import { damageRolls } from "./damage.js";
 import { displayName, titleCase, getBossDisplayName } from "../utils/format.js";
 import { ITEM_EFFECTS } from "../data/item-effects.js";
@@ -198,8 +198,9 @@ export class BattleState extends EventTarget {
     // Prefill manual override fields
     this.manualBossOverride = false;
     this.manualBossName = pokemon ? pokemon.name : "";
-    this.manualBossHP = stats ? stats.hp : 0;
-    this.manualBossMaxHP = stats ? stats.hp : 0;
+    const raidHp = pokemon ? calculateRaidBossHP(pokemon) : 0;
+    this.manualBossHP = raidHp;
+    this.manualBossMaxHP = raidHp;
     this.manualBossCurrentTypes = pokemon ? pokemon.types.map(({ type }) => type.name) : [];
     this.manualBossBaseStats = {
       hp: pokemon ? (pokemon.stats.find(s => s.stat.name === "hp")?.base_stat || 0) : 0,
@@ -264,7 +265,7 @@ export class BattleState extends EventTarget {
       };
       this.bossStages = { ...this.manualBossStages };
     } else {
-      this.bossMaxHP = this.bossBaseStats ? this.bossBaseStats.hp : (this.bossStats ? this.bossStats.hp : 0);
+      this.bossMaxHP = calculateRaidBossHP(this.boss);
       this.bossHP = this.bossMaxHP;
       if (!this.bossCurrentTypes || this.bossCurrentTypes.length === 0) {
         this.bossCurrentTypes = this.boss && this.boss.types ? this.boss.types.map(({ type }) => type.name) : [];

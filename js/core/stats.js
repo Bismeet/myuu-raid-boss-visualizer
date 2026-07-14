@@ -1,6 +1,7 @@
 import { natureModifier } from "../data/natures.js";
 
 export const STAT_KEYS = ["hp", "atk", "def", "spa", "spd", "spe"];
+export const RAID_BOSS_HP_SCALE = 10_000;
 const API_STAT = { hp:"hp", attack:"atk", defense:"def", "special-attack":"spa", "special-defense":"spd", speed:"spe" };
 
 export function baseStats(pokemon) {
@@ -18,6 +19,11 @@ export function calculatePokemonStats(pokemon, build) {
     key,
     calculateStat(bases[key], build.ivs[key], build.evs[key], build.level, natureModifier(build.nature, key), key === "hp"),
   ]));
+}
+
+export function calculateRaidBossHP(pokemon) {
+  const baseHp = Number(baseStats(pokemon).hp) || 1;
+  return Math.max(1, Math.floor(baseHp * RAID_BOSS_HP_SCALE));
 }
 
 export function calculateBossStats(pokemon) {
