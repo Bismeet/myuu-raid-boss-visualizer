@@ -54,7 +54,8 @@ const bossStats = calculateBossStats(mewtwo);
 state.boss = mewtwo;
 state.bossBaseStats = { ...bossStats };
 state.bossStats = { ...bossStats };
-state.bossMoves[0] = { name: "psystrike", power: 100, type: { name: "psychic" }, damage_class: { name: "special" } };
+// Use doubled test power now that raid boss offense is intentionally halved.
+state.bossMoves[0] = { name: "psystrike", power: 200, type: { name: "psychic" }, damage_class: { name: "special" } };
 
 // 1. Validate Item Registry Hooks inside damage calculator
 const basePayload = {

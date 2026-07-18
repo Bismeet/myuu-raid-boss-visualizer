@@ -83,7 +83,15 @@ export class Summary {
                   </div>
                   <div>
                     <span style="color:var(--danger); font-weight:800; display:block; font-size:9px; text-transform:uppercase;">Boss Action</span>
-                    ${row.bossAction === "use-move" ? `Used <strong>${titleCase(row.bossMove)}</strong>` : "Did Nothing"}
+                    ${row.bossAction === "use-move"
+                      ? `Used <strong>${titleCase(row.bossMove)}</strong>`
+                      : row.bossAction === "do-nothing"
+                        ? "Did Nothing"
+                        : row.bossAction === "fainted-before-action"
+                          ? "Fainted before moving"
+                          : row.bossAction === "cannot-move"
+                            ? "Could not move"
+                            : "—"}
                     ${row.bossDamage > 0 ? `<br><span style="color:var(--danger);">Took ${row.bossDamage.toLocaleString()} damage</span>` : ""}
                   </div>
                 </div>

@@ -137,13 +137,13 @@ async function testSTAB() {
 // 3. Custom power (Last Respects BP)
 async function testCustomPower() {
   const state = setupState("max");
-  state.team[0].moves[0].customPower = 300; // override original 50 BP
+  state.faintedAlliesCount = 5;
   await state.executeTurn("use-move", 0, 0, "do-nothing", 0);
   
   const details = state.battleLog[0].playerDamageDetails;
   console.log("Custom power details:", details);
   if (!details || details.usedPower !== 300) {
-    throw new Error("Custom power not logged correctly in damage details.");
+    throw new Error("Dynamic Last Respects power not logged correctly in damage details.");
   }
 
   console.log("Custom power verification PASSED.");

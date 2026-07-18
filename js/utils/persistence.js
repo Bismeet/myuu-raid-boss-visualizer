@@ -16,6 +16,20 @@ const VERSION = 3;
 const cloneRecord = (value, fallback) => ({ ...fallback, ...(value || {}) });
 const validSwitchMode = (value) => ["normal", "baton", "stay"].includes(value) ? value : "normal";
 
+export function redactBossDefensesForExport(payload) {
+  const safe = JSON.parse(JSON.stringify(payload));
+  for (const stats of [
+    safe.setup?.boss?.baseStats,
+    safe.setup?.boss?.currentStats,
+    safe.setup?.manualBossFinalStats,
+  ]) {
+    if (!stats) continue;
+    delete stats.def;
+    delete stats.spd;
+  }
+  return safe;
+}
+
 function serializeMove(move) {
   if (!move) return null;
   return {
@@ -197,6 +211,8 @@ export class SetupPersistence extends EventTarget {
         faintedAlliesCount: this.state.faintedAlliesCount,
         battleLog: [...this.state.battleLog],
         awaitingForcedSwitch: this.state.awaitingForcedSwitch,
+        forcedSwitchReason: this.state.forcedSwitchReason || "",
+        metronomeMoveChains: this.state.metronomeMoveChains.map((chain) => ({ ...chain })),
         splitEvents: this.state.splitEvents.map((event) => ({ ...event })),
         volatileEffects: JSON.parse(JSON.stringify(this.state.volatileEffects)),
         
@@ -258,6 +274,11 @@ export class SetupPersistence extends EventTarget {
           teamStages: s.teamStages.map(st => ({ ...st })),
           bossStages: { ...s.bossStages },
           faintedAlliesCount: s.faintedAlliesCount,
+          awaitingForcedSwitch: Boolean(s.awaitingForcedSwitch),
+          forcedSwitchReason: s.forcedSwitchReason || "",
+          metronomeMoveChains: Array.isArray(s.metronomeMoveChains)
+            ? s.metronomeMoveChains.map((chain) => ({ ...chain }))
+            : [],
           battleLog: [...s.battleLog],
           bossStats: s.bossStats ? { ...s.bossStats } : null,
           teamStats: s.teamStats.map(st => ({ ...st })),
@@ -376,7 +397,10 @@ export class SetupPersistence extends EventTarget {
     this.state.manualBossMaxHP = Number(setup.manualBossMaxHP) || 0;
     this.state.manualBossCurrentTypes = Array.isArray(setup.manualBossCurrentTypes) ? [...setup.manualBossCurrentTypes] : [];
     this.state.manualBossBaseStats = setup.manualBossBaseStats ? { ...setup.manualBossBaseStats } : { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
-    this.state.manualBossFinalStats = setup.manualBossFinalStats ? { ...setup.manualBossFinalStats } : { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
+    this.state.manualBossFinalStats = cloneRecord(
+      setup.manualBossFinalStats,
+      this.state.bossStats || { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
+    );
     this.state.manualBossStages = setup.manualBossStages ? { ...setup.manualBossStages } : emptyStages();
 
     if (this.state.boss && !this.state.manualBossOverride) {
@@ -438,6 +462,11 @@ export class SetupPersistence extends EventTarget {
           }))
         : [];
       this.state.awaitingForcedSwitch = Boolean(battle.awaitingForcedSwitch);
+      this.state.forcedSwitchReason = battle.forcedSwitchReason || "";
+      this.state.metronomeMoveChains = Array.from({ length: 6 }, (_, index) => ({
+        moveName: String(battle.metronomeMoveChains?.[index]?.moveName || ""),
+        consecutiveUses: Math.max(0, Number(battle.metronomeMoveChains?.[index]?.consecutiveUses) || 0),
+      }));
       this.state.splitEvents = Array.isArray(battle.splitEvents)
         ? battle.splitEvents.map((event) => ({ kind: event.kind, slot: Number(event.slot) || 0 }))
         : [];
@@ -556,6 +585,8 @@ export class SetupPersistence extends EventTarget {
         boss: false
       };
       this.state.awaitingForcedSwitch = false;
+      this.state.forcedSwitchReason = "";
+      this.state.metronomeMoveChains = Array.from({ length: 6 }, () => ({ moveName: "", consecutiveUses: 0 }));
       this.state.splitEvents = [];
       this.state.volatileEffects = normalizeVolatileEffects();
       this.state.damageRollMode = localStorage.getItem("myuu_raid_damage_roll_mode") || "random";
@@ -622,7 +653,8 @@ export class SetupPersistence extends EventTarget {
   }
 
   exportJson() {
-    return JSON.stringify(this.serialize(), null, 2);
+    // Setup exports intentionally omit live battle state and boss final defenses.
+    return JSON.stringify(redactBossDefensesForExport(this.serialize(false)), null, 2);
   }
 
   clear() {

@@ -10,7 +10,8 @@ import { openSearchDropdown, setupSearchDropdownController } from "./search-drop
 
 const TYPES = POKEMON_TYPES;
 const CURATED_ITEMS = [
-  "choice-band", "choice-specs", "life-orb", "expert-belt", "muscle-band", "wise-glasses",
+  "choice-band", "choice-specs", "life-orb", "expert-belt", "muscle-band", "wise-glasses", "metronome",
+  "heracronite",
   "spell-tag", "black-glasses", "mystic-water", "never-melt-ice", "hard-stone", "silver-powder",
   "scope-lens", "razor-claw", "normal-gem", "ghost-gem", "bug-gem", "ice-gem", "fighting-gem",
 ];
@@ -104,7 +105,7 @@ export const QUICK_CALC_PRESETS = {
     move: "pin-missile",
     nature: "adamant",
     ability: "skill-link",
-    item: "choice-band",
+    item: "heracronite",
     atkEv: 252,
     atkStage: 6,
     hitCount: 5,
@@ -119,20 +120,8 @@ export const QUICK_CALC_PRESETS = {
     atkEv: 252,
     atkStage: 6,
     hitCount: 5,
+    teraType: "ice",
   },
-  smeargle: {
-    label: "Smeargle Baton Pass setup",
-    attacker: "smeargle",
-    move: "stored-power",
-    nature: "modest",
-    ability: "own-tempo",
-    item: "focus-sash",
-    spaEv: 252,
-    spaStage: 6,
-  },
-  shuckle: { label: "Shuckle Guard Split", guardSplitOrder: ["shuckle"] },
-  elgyem: { label: "Elgyem Guard Split", guardSplitOrder: ["elgyem"] },
-  shieldon: { label: "Shieldon Screech", guardSplitOrder: ["shieldon"], screechCount: 3 },
 };
 
 const escapeHtml = (value = "") => String(value)
@@ -366,6 +355,7 @@ export class QuickCalc {
     }
     const dynamicMove = resolveDynamicMovePower(move, this.attackerStages(), {
       allowCustomOverride: Boolean(this.cfg.customPowerEnabled),
+      faintedAllies: this.cfg.faintedAllies,
     });
     return withMoveType(dynamicMove, this.effectiveMoveType());
   }

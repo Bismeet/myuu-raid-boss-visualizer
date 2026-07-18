@@ -115,7 +115,10 @@ function prepareMove(moveData, input, stages = emptyStages(), { acceptProvidedCu
   } else if (input.customPowerEnabled || (acceptProvidedCustomPower && Number.isFinite(Number(input.customPower)))) {
     move.customPower = clamp(input.customPower, 0, 9999);
   }
-  move = resolveDynamicMovePower(move, stages, { allowCustomOverride: Boolean(input.customPowerEnabled) });
+  move = resolveDynamicMovePower(move, stages, {
+    allowCustomOverride: Boolean(input.customPowerEnabled),
+    faintedAllies: input.faintedAllies,
+  });
   return withMoveType(move, TYPES.has(input.moveType) ? input.moveType : move.type?.name);
 }
 
@@ -251,6 +254,10 @@ export async function calculateBattleRaidDamage(input) {
   ]);
   const privateBoss = privateBossStats(bossPokemon, config);
   const bossStats = privateBoss.stats;
+  // Raid offense is reduced before replaying Power Split so every battle path
+  // averages against the same current offensive value.
+  bossStats.atk = Math.floor(bossStats.atk / 2);
+  bossStats.spa = Math.floor(bossStats.spa / 2);
   const teamStats = replaySplitEvents(input, bossStats);
   const activeSlot = clamp(input.activeSlot, 0, teamStats.length - 1);
   const playerStats = teamStats[activeSlot];
@@ -272,6 +279,7 @@ export async function calculateBattleRaidDamage(input) {
     level: clamp(input.player?.level, 1, 100),
     item: String(input.player?.item || ""),
     ability: playerAbility,
+    metronomeMultiplier: clamp(input.player?.metronomeMultiplier, 1, 2),
   };
   const boss = {
     pokemon: bossPokemon,

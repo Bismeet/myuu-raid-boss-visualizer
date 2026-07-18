@@ -43,7 +43,8 @@ export function applyStatLoweringMove(state, user, target, side, turnLog, moveNa
   if (result.after === result.before) {
     turnLog.notes.push(`${targetName}'s ${statNameLabel} won't go any lower!`);
   } else {
-    const fallLabel = stagesToDrop >= 2 ? "harshly fell" : "fell";
+    const appliedDrop = Math.abs(result.after - result.before);
+    const fallLabel = appliedDrop >= 3 ? "severely fell" : appliedDrop === 2 ? "harshly fell" : "fell";
     turnLog.notes.push(`${targetName}'s ${statNameLabel} ${fallLabel}!`);
     if (result.simpleBoosted) {
       turnLog.notes.push(`Simple doubled the stat change!`);

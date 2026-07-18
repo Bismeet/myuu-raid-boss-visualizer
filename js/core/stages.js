@@ -13,8 +13,20 @@ export function getStoredPowerLikeBasePower(stages = {}) {
   return 20 + (20 * getTotalPositiveStages(stages));
 }
 
-export function resolveDynamicMovePower(move, stages = {}, { allowCustomOverride = false } = {}) {
-  if (!move || !["stored-power", "power-trip"].includes(move.name) || allowCustomOverride) return move;
+export function getLastRespectsBasePower(faintedAllies = 0) {
+  const count = Math.max(0, Math.min(5, Math.floor(Number(faintedAllies) || 0)));
+  return 50 + (50 * count);
+}
+
+export function resolveDynamicMovePower(move, stages = {}, { allowCustomOverride = false, faintedAllies = 0 } = {}) {
+  if (!move || allowCustomOverride) return move;
+  if (move.name === "last-respects") {
+    return {
+      ...move,
+      customPower: getLastRespectsBasePower(faintedAllies),
+    };
+  }
+  if (!["stored-power", "power-trip"].includes(move.name)) return move;
   return {
     ...move,
     customPower: getStoredPowerLikeBasePower(stages),

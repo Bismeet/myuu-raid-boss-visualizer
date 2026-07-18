@@ -336,7 +336,8 @@ async function testSturdyAndUnburden() {
 
   const bossStats = calculateBossStats(mewtwo);
   state.setBoss(mewtwo, bossStats);
-  state.bossMoves[0] = { name: "close-combat", power: 120, type: { name: "fighting" }, damage_class: { name: "physical" } };
+  // Use doubled test power now that raid boss offense is intentionally halved.
+  state.bossMoves[0] = { name: "close-combat", power: 240, type: { name: "fighting" }, damage_class: { name: "physical" } };
 
   state.startBattle();
 
@@ -385,7 +386,7 @@ async function testSturdyAndUnburden() {
   state2.team[0].moves = [{ name: "tackle", power: 40, type: { name: "normal" }, damage_class: { name: "physical" } }];
   state2.team[0].stats = calculatePokemonStats(shieldon, state2.team[0]);
   state2.setBoss(mewtwo, bossStats);
-  state2.bossMoves[0] = { name: "close-combat", power: 120, type: { name: "fighting" }, damage_class: { name: "physical" } };
+  state2.bossMoves[0] = { name: "close-combat", power: 240, type: { name: "fighting" }, damage_class: { name: "physical" } };
   
   // Set Mewtwo's ability to Mold Breaker
   state2.bossAbility = "mold-breaker";
@@ -413,7 +414,7 @@ async function testSturdyAndUnburden() {
   state3.team[0].moves = [{ name: "tackle", power: 40, type: { name: "normal" }, damage_class: { name: "physical" } }];
   state3.team[0].stats = calculatePokemonStats(shieldon, state3.team[0]);
   state3.setBoss(mewtwo, bossStats);
-  state3.bossMoves[0] = { name: "close-combat", power: 120, type: { name: "fighting" }, damage_class: { name: "physical" } };
+  state3.bossMoves[0] = { name: "close-combat", power: 240, type: { name: "fighting" }, damage_class: { name: "physical" } };
 
   state3.startBattle();
 

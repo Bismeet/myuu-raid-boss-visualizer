@@ -55,7 +55,7 @@ export class Simulator {
         const spa = Math.floor((build.stats.spa + bossStats.spa) / 2);
         bossStats.atk = atk; bossStats.spa = spa;
       } else {
-        move = resolveDynamicMovePower(move, stages);
+        move = resolveDynamicMovePower(move, stages, { faintedAllies: state.faintedAlliesCount });
         const movePower = move?.customPower ?? move?.basePower ?? move?.power ?? null;
         if (move?.damage_class?.name === "status" || !movePower) {
           rows.push(this.row(planned, build, move, damage, hp));

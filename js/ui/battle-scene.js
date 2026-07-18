@@ -2,7 +2,7 @@ import { copyText, displayName, fallbackSprite, spriteUrl, titleCase, getBossDis
 import { compactNumber } from "../utils/format.js";
 import { getAbilityOverride, getEffectiveAbility, getEffectiveSpeed } from "../core/battle-state.js";
 import { ABILITY_EFFECTS } from "../data/ability-effects.js";
-import { applyStage } from "../core/stages.js";
+import { applyStage, getLastRespectsBasePower } from "../core/stages.js";
 import { requestBattleDamage } from "../api/battle-damage.js";
 import { renderStageBadges } from "./stage-badges.js";
 import { calculateRaidBossHP } from "../core/stats.js";
@@ -430,7 +430,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
       }
       const isUnavailable = controlsLocked
         || (!this.state.awaitingForcedSwitch && (isActive || isFainted))
-        || (this.state.awaitingForcedSwitch && isFainted);
+        || (this.state.awaitingForcedSwitch && (isActive || isFainted));
 
       return `
         <button type="button" class="party-member-btn" data-slot="${idx}" aria-label="Select ${displayName(slot.pokemon.name)}" ${isUnavailable ? "disabled" : ""} style="width:100%; border:${borderStyle}; background:${bgStyle}; opacity:${opacity}; padding:6px; border-radius:6px; cursor:pointer; text-align:left; display:flex; gap:6px; align-items:center; min-height:48px; position:relative; user-select:none;">
@@ -459,9 +459,10 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
         </div>
       `;
     } else if (this.state.awaitingForcedSwitch) {
+      const ejectButtonSwitch = this.state.forcedSwitchReason === "eject-button";
       commandPanelHTML = `
         <div style="text-align:center; padding:15px; border-radius:6px;">
-          <strong style="color:var(--danger); font-size:13px; display:block; margin-bottom:4px;">${displayName(activeBuild.pokemon.name)} fainted!</strong>
+          <strong style="color:${ejectButtonSwitch ? "var(--cyan)" : "var(--danger)"}; font-size:13px; display:block; margin-bottom:4px;">${ejectButtonSwitch ? `${displayName(activeBuild.pokemon.name)}'s Eject Button activated!` : `${displayName(activeBuild.pokemon.name)} fainted!`}</strong>
           <span style="font-size:11px; color:var(--muted);">Choose your next Pokémon from your team buttons above.</span>
         </div>
       `;
@@ -549,7 +550,9 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
                 }
                 const isSelected = this.playerAction === "use-move" && this.selectedMoveIndex === idx;
                 const isBatonPass = m.name === "baton-pass";
-                const customPower = m.customPower ?? m.basePower ?? m.power ?? null;
+                const customPower = m.name === "last-respects"
+                  ? getLastRespectsBasePower(this.state.faintedAlliesCount)
+                  : (m.customPower ?? m.basePower ?? m.power ?? null);
                 
                 let borderStyle = isSelected ? "2px solid var(--cyan)" : "1px solid var(--border-soft)";
                 let bgStyle = isSelected ? "rgba(82,211,230,0.15)" : "var(--surface-3)";
@@ -1012,7 +1015,7 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
       for (const step of steps) {
         if (animationId !== this.animationRunId) return;
         if (step.side === "player") {
-          if (step.action === "switch" || step.action === "switch-forced" || step.action === "baton-pass") {
+          if (step.action === "switch" || step.action === "switch-forced" || step.action === "switch-eject-button" || step.action === "baton-pass") {
             if (callout) {
               callout.innerHTML = `<strong>Switch</strong><span>${displayName(playerMon.pokemon.name)} entered battle!</span>`;
             }
@@ -1072,9 +1075,14 @@ Modifier = Critical × Random × STAB × TypeEffectiveness × Burn × Other</div
               this.updateHPDisplay("player", playerHPAfterStep, playerMon.stats.hp);
             }
             if (!await wait(300)) return;
-          } else {
+          } else if (step.action === "do-nothing") {
             if (callout) {
               callout.innerHTML = `<strong>Do Nothing</strong><span>Boss did nothing</span>`;
+            }
+            if (!await wait(220)) return;
+          } else if (step.action === "cannot-move") {
+            if (callout) {
+              callout.innerHTML = `<strong>Could Not Move</strong><span>The boss could not act</span>`;
             }
             if (!await wait(220)) return;
           }

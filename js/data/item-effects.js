@@ -70,12 +70,18 @@ export const ITEM_EFFECTS = {
   "metronome": {
     id: "metronome",
     name: "Metronome",
-    description: "Boosts damage of repeated moves (manual override multiplier).",
+    description: "Boosts consecutive uses of the same damaging move by 0.2x, up to 2x.",
     hooks: {
       finalDamageModifier(ctx) {
         return Math.max(1.0, Math.min(2.0, ctx.attacker.metronomeMultiplier || 1.0));
       }
     }
+  },
+  "eject-button": {
+    id: "eject-button",
+    name: "Eject Button",
+    description: "Switches the holder out after it survives a damaging hit.",
+    hooks: {}
   },
   // Crit items
   "scope-lens": {

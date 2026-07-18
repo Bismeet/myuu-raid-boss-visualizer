@@ -14,6 +14,24 @@ import { typeEffectiveness } from "../data/type-chart.js";
 
 const blankStats = () => ({ hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 });
 const blankSpread = (value) => ({ hp: value, atk: value, def: value, spa: value, spd: value, spe: value });
+const freshMoveChains = () => Array.from({ length: 6 }, () => ({ moveName: "", consecutiveUses: 0 }));
+
+export function halveBossOffensiveStats(stats = {}) {
+  return {
+    ...stats,
+    atk: Math.floor((Number(stats.atk) || 0) / 2),
+    spa: Math.floor((Number(stats.spa) || 0) / 2),
+  };
+}
+
+export function metronomeMultiplierForUse(consecutiveUses = 1) {
+  return Math.min(1 + (0.2 * Math.max(0, (Number(consecutiveUses) || 1) - 1)), 2);
+}
+
+export function formatDamagePercent(damage, maxHP) {
+  if (!(Number(maxHP) > 0)) return "0.0";
+  return ((Math.max(0, Number(damage) || 0) / Number(maxHP)) * 100).toFixed(1);
+}
 const freshVolatileEffects = () => ({
   octolock: null,
   ingrain: [false, false, false, false, false, false],
@@ -171,6 +189,8 @@ export class BattleState extends EventTarget {
     this.manualBossFinalStats = { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 };
     this.manualBossStages = emptyStages();
     this.awaitingForcedSwitch = false;
+    this.forcedSwitchReason = "";
+    this.metronomeMoveChains = freshMoveChains();
 
     // Fallback/Legacy plan array to prevent crashes in un-migrated code
     this.plan = Array.from({ length: 21 }, (_, index) => ({
@@ -287,6 +307,8 @@ export class BattleState extends EventTarget {
     this.uiMode = "battle";
     this.isResolvingTurn = false;
     this.awaitingForcedSwitch = false;
+    this.forcedSwitchReason = "";
+    this.metronomeMoveChains = freshMoveChains();
     this.splitEvents = [];
     this.volatileEffects = freshVolatileEffects();
 
@@ -343,13 +365,13 @@ export class BattleState extends EventTarget {
       }
     });
 
-    this.bossOriginalStats = {
+    this.bossOriginalStats = halveBossOffensiveStats({
       atk: this.bossStats.atk,
       def: this.bossStats.def,
       spa: this.bossStats.spa,
       spd: this.bossStats.spd,
       spe: this.bossStats.spe,
-    };
+    });
     this.bossCurrentStats = { ...this.bossOriginalStats };
     this.bossStatSources = {
       atk: [this.manualBossOverride ? "Manual override" : "Public fallback"],
@@ -428,6 +450,8 @@ export class BattleState extends EventTarget {
     this.battleLog = [];
     this.history = [];
     this.awaitingForcedSwitch = false;
+    this.forcedSwitchReason = "";
+    this.metronomeMoveChains = freshMoveChains();
     this.splitEvents = [];
     this.volatileEffects = freshVolatileEffects();
     this.team.forEach((slot) => {
@@ -516,6 +540,9 @@ export class BattleState extends EventTarget {
       teamStages: this.teamStages.map((s) => ({ ...s })),
       bossStages: { ...this.bossStages },
       faintedAlliesCount: this.faintedAlliesCount,
+      awaitingForcedSwitch: this.awaitingForcedSwitch,
+      forcedSwitchReason: this.forcedSwitchReason,
+      metronomeMoveChains: this.metronomeMoveChains.map((chain) => ({ ...chain })),
       battleLog: [...this.battleLog],
       bossStats: this.bossStats ? { ...this.bossStats } : null,
       teamStats: this.team.map((slot) => ({ ...slot.stats })),
@@ -573,6 +600,11 @@ export class BattleState extends EventTarget {
     this.teamStages = snapshot.teamStages.map((s) => ({ ...s }));
     this.bossStages = { ...snapshot.bossStages };
     this.faintedAlliesCount = snapshot.faintedAlliesCount;
+    this.awaitingForcedSwitch = Boolean(snapshot.awaitingForcedSwitch);
+    this.forcedSwitchReason = snapshot.forcedSwitchReason || "";
+    this.metronomeMoveChains = Array.isArray(snapshot.metronomeMoveChains)
+      ? freshMoveChains().map((fallback, index) => ({ ...fallback, ...snapshot.metronomeMoveChains[index] }))
+      : freshMoveChains();
     this.battleLog = [...snapshot.battleLog];
 
     if (snapshot.bossStats) {
@@ -698,6 +730,7 @@ export class BattleState extends EventTarget {
         types: [...this.teamCurrentTypes[this.activeSlot]],
         stages: { ...this.teamStages[this.activeSlot] },
         atFullHp: this.teamHP[this.activeSlot] === currentActive.stats.hp,
+        metronomeMultiplier: Number(currentActive.battleMetronomeMultiplier) || 1,
       },
       bossState: {
         ability: direction === "player-to-boss" ? defenderAbility : attackerAbility,
@@ -839,6 +872,22 @@ export class BattleState extends EventTarget {
     if (this.volatileEffects.trickRoomTurns > 0) this.volatileEffects.trickRoomTurns -= 1;
   }
 
+  trackPlayerMoveChain(slot, moveName, damaging = false) {
+    const item = getEffectiveItem({ slotIndex: slot, isBoss: false, item: this.team[slot]?.item }, this);
+    if (item !== "metronome") {
+      this.metronomeMoveChains[slot] = { moveName: "", consecutiveUses: 0 };
+      return 1;
+    }
+    const previous = this.metronomeMoveChains[slot] || { moveName: "", consecutiveUses: 0 };
+    const consecutiveUses = previous.moveName === moveName ? previous.consecutiveUses + 1 : 1;
+    this.metronomeMoveChains[slot] = { moveName, consecutiveUses };
+    return damaging ? metronomeMultiplierForUse(consecutiveUses) : 1;
+  }
+
+  hasValidSwitch(excludingSlot = this.activeSlot) {
+    return this.team.some((slot, index) => index !== excludingSlot && slot.pokemon && this.teamHP[index] > 0);
+  }
+
   async executeTurn(playerAction, playerMoveIndex, playerSwitchSlot, bossAction, bossMoveIndex, playerTerastallize = false) {
     if (!this.battleActive) return;
     if (this.awaitingForcedSwitch) {
@@ -906,6 +955,7 @@ export class BattleState extends EventTarget {
     };
 
     let resolvedBossAction = bossAction;
+    let bossCannotMoveReason = "";
     let bossMove = null;
 
     if (this.bossHP > 0) {
@@ -915,15 +965,21 @@ export class BattleState extends EventTarget {
           bossMove = validMoves[Math.floor(Math.random() * validMoves.length)];
           resolvedBossAction = "use-move";
         } else {
-          resolvedBossAction = "do-nothing";
+          resolvedBossAction = "cannot-move";
+          bossCannotMoveReason = "no moves are available";
         }
       } else if (resolvedBossAction === "use-move") {
         bossMove = this.bossMoves[bossMoveIndex];
-        if (!bossMove) resolvedBossAction = "do-nothing";
+        if (!bossMove) {
+          resolvedBossAction = "cannot-move";
+          bossCannotMoveReason = "no move was selected";
+        }
       }
     } else {
-      resolvedBossAction = "do-nothing";
+      resolvedBossAction = "fainted-before-action";
     }
+
+    turnLog.bossAction = resolvedBossAction;
 
     const bossActionObj = {
       type: resolvedBossAction,
@@ -991,7 +1047,7 @@ export class BattleState extends EventTarget {
     for (const step of steps) {
       if (step.side === "player") {
         // Skip if fainted
-        if (this.teamHP[this.activeSlot] <= 0) continue;
+        if (this.teamHP[this.activeSlot] <= 0 || this.awaitingForcedSwitch) continue;
 
         if (step.action === "switch" || step.action === "baton-pass") {
           const incomingMon = this.team[step.switchSlot];
@@ -1020,6 +1076,7 @@ export class BattleState extends EventTarget {
           this.resetSlotStats(currentActiveSlot);
           this.teamStages[currentActiveSlot] = emptyStages();
           this.teamCurrentTypes[currentActiveSlot] = currentActiveMon.pokemon.types.map(({ type }) => type.name);
+          this.metronomeMoveChains[currentActiveSlot] = { moveName: "", consecutiveUses: 0 };
 
           this.activeSlot = step.switchSlot;
           turnLog.activeSlot = this.activeSlot;
@@ -1027,7 +1084,9 @@ export class BattleState extends EventTarget {
           notesCountBefore = turnLog.notes.length;
         } else if (step.action === "use-move" || step.action === "use-z-move") {
           const selectedMove = this.team[this.activeSlot].moves[step.moveIndex];
-          let move = resolveDynamicMovePower(selectedMove, this.teamStages[this.activeSlot]);
+          let move = resolveDynamicMovePower(selectedMove, this.teamStages[this.activeSlot], {
+            faintedAllies: this.faintedAlliesCount,
+          });
           if (move) {
             const currentActive = this.team[this.activeSlot];
             
@@ -1084,6 +1143,10 @@ export class BattleState extends EventTarget {
               }
               turnLog.messages.push(`<strong>${displayName(currentActive.pokemon.name)}</strong> used <strong>${moveLabel}</strong>!`);
               
+              const isDamagingMove = move.damage_class?.name !== "status" && Boolean(usedPower);
+              const metronomeMultiplier = this.trackPlayerMoveChain(this.activeSlot, move.name, isDamagingMove);
+              currentActive.battleMetronomeMultiplier = metronomeMultiplier;
+
               if (move.damage_class?.name === "status" || !usedPower) {
                 if (MOVE_EFFECTS[move.name]) {
                   MOVE_EFFECTS[move.name].apply(this, currentActive, this.boss, "player", turnLog, {
@@ -1108,7 +1171,14 @@ export class BattleState extends EventTarget {
                 const defenderAbility = getEffectiveAbility({ isBoss: true }, this);
                 const attackerItem = getEffectiveItem({ slotIndex: this.activeSlot, isBoss: false, item: currentActive.item }, this);
                 const payload = {
-                  attacker: { ...currentActive, stats: currentActive.currentStats, level: currentActive.level, item: attackerItem, ability: attackerAbility },
+                  attacker: {
+                    ...currentActive,
+                    stats: currentActive.currentStats,
+                    level: currentActive.level,
+                    item: attackerItem,
+                    ability: attackerAbility,
+                    metronomeMultiplier,
+                  },
                   boss: { stats: this.bossCurrentStats, maxHp: this.bossMaxHP },
                   move: move,
                   attackerTypes: this.teamCurrentTypes[this.activeSlot],
@@ -1149,9 +1219,6 @@ export class BattleState extends EventTarget {
                 if (normal.criticalModifier > 1) {
                   turnLog.messages.push(`<span class="chat-modifier-line">A critical hit!</span>`);
                 }
-                const pct = Math.round((dealt / this.bossMaxHP) * 100);
-                const clampedPct = Math.min(100, Math.max(dealt > 0 ? 1 : 0, pct));
-                turnLog.messages.push(`(The opposing ${bossDisplayName} lost ${clampedPct}% of its health!)`);
               }
 
               const initialHP = this.bossHP;
@@ -1171,15 +1238,21 @@ export class BattleState extends EventTarget {
                 this.bossHP = Math.max(0, this.bossHP - dealt);
               }
 
-              turnLog.playerDamage = bossSurvived ? (initialHP - 1) : dealt;
+              turnLog.playerDamage = bossSurvived ? (initialHP - 1) : Math.min(dealt, initialHP);
               turnLog.playerDisplayedDamage = Number.isInteger(displayedDamage) ? displayedDamage : turnLog.playerDamage;
               turnLog.bossHPAfter = this.bossHP;
+
+              if (normal.effectiveness !== 0 && turnLog.playerDamage > 0) {
+                const damageLabel = turnLog.playerDamage.toLocaleString("en-US");
+                const damagePercent = formatDamagePercent(turnLog.playerDamage, maxHP);
+                turnLog.messages.push(`Boss ${bossDisplayName} lost ${damageLabel} HP (${damagePercent}%)!`);
+              }
 
               turnLog.playerDamageDetails = {
                 moveName: move.name,
                 attackerName: currentActive.pokemon.name,
                 defenderName: bossDisplayName,
-                damage: bossSurvived ? (initialHP - 1) : dealt,
+                damage: turnLog.playerDamage,
                 rollPercent: rollResult.rollPercent,
                 rollMode: this.damageRollMode || "random",
                 minDamage: normal.min,
@@ -1193,6 +1266,14 @@ export class BattleState extends EventTarget {
                 attackerItem: currentActive.item
               };
               turnLog.damageDetails = turnLog.playerDamageDetails;
+
+              if (metronomeMultiplier > 1) {
+                const metronomeMessage = `${displayName(currentActive.pokemon.name)}'s Metronome boosted ${titleCase(move.name)} to ${metronomeMultiplier.toFixed(1)}x damage!`;
+                turnLog.messages.push(metronomeMessage);
+                turnLog.notes.push(metronomeMessage);
+                turnLog.playerDamageDetails.metronomeMultiplier = metronomeMultiplier;
+                notesCountBefore = turnLog.notes.length;
+              }
 
               const moveType = move?.type?.name || "";
               if (attackerItem === `${moveType}-gem` && normal.effectiveness !== 0 && dealt > 0) {
@@ -1227,8 +1308,18 @@ export class BattleState extends EventTarget {
       }
       } else {
         // Boss's turn
-        if (this.bossHP <= 0 || this.teamHP[this.activeSlot] <= 0) continue;
-        step.move = resolveDynamicMovePower(step.move, this.bossStages);
+        if (this.bossHP <= 0) {
+          turnLog.bossAction = "fainted-before-action";
+          continue;
+        }
+        if (this.teamHP[this.activeSlot] <= 0) {
+          turnLog.bossAction = "cannot-move";
+          turnLog.messages.push(`The opposing <strong>${bossDisplayName}</strong> could not move because there was no active target.`);
+          turnLog.notes.push("Boss could not move because there was no active target.");
+          notesCountBefore = turnLog.notes.length;
+          continue;
+        }
+        step.move = resolveDynamicMovePower(step.move, this.bossStages, { faintedAllies: 0 });
         step.move = this.resolveActionMove(step.move, "boss", turnLog);
 
         if (step.action === "use-move" && step.move) {
@@ -1297,9 +1388,6 @@ export class BattleState extends EventTarget {
               if (normal.criticalModifier > 1) {
                 turnLog.messages.push(`<span class="chat-modifier-line">A critical hit!</span>`);
               }
-              const pct = Math.round((dealt / currentActive.stats.hp) * 100);
-              const clampedPct = Math.min(100, Math.max(dealt > 0 ? 1 : 0, pct));
-              turnLog.messages.push(`(${displayName(currentActive.pokemon.name)} lost ${clampedPct}% of its health!)`);
             }
 
             const initialHP = this.teamHP[this.activeSlot];
@@ -1310,7 +1398,7 @@ export class BattleState extends EventTarget {
 
             let playerSurvived = false;
             let survivalNote = "";
-            let finalDamage = dealt;
+            let finalDamage = Math.min(dealt, initialHP);
 
             if (dealt >= initialHP && initialHP === maxHP) {
               if (activeDefenderAbility === "sturdy") {
@@ -1332,6 +1420,12 @@ export class BattleState extends EventTarget {
             }
 
              turnLog.bossDamage = finalDamage;
+
+             if (normal.effectiveness !== 0 && finalDamage > 0) {
+               const damageLabel = finalDamage.toLocaleString("en-US");
+               const damagePercent = formatDamagePercent(finalDamage, maxHP);
+               turnLog.messages.push(`${displayName(currentActive.pokemon.name)} lost ${damageLabel} HP (${damagePercent}%)!`);
+             }
 
              turnLog.bossDamageDetails = {
                moveName: step.move.name,
@@ -1373,6 +1467,25 @@ export class BattleState extends EventTarget {
              );
              captureNotes();
 
+            if (itemSlug === "eject-button" && normal.effectiveness !== 0 && finalDamage > 0 && this.teamHP[this.activeSlot] > 0) {
+              markItemConsumed({ slotIndex: this.activeSlot }, this);
+              if (this.hasValidSwitch(this.activeSlot)) {
+                const ejectMessage = `${displayName(currentActive.pokemon.name)} is switched out with the Eject Button!`;
+                turnLog.messages.push(ejectMessage);
+                turnLog.notes.push(ejectMessage);
+                this.awaitingForcedSwitch = true;
+                this.forcedSwitchReason = "eject-button";
+                if (!turnLog.playerMovedFirst && turnLog.playerMove === "—") {
+                  turnLog.playerAction = "forced-out-before-action";
+                }
+              } else {
+                const ejectMessage = `${displayName(currentActive.pokemon.name)}'s Eject Button was consumed, but no switch was available.`;
+                turnLog.messages.push(ejectMessage);
+                turnLog.notes.push(ejectMessage);
+              }
+              notesCountBefore = turnLog.notes.length;
+            }
+
             if (this.teamHP[this.activeSlot] <= 0) {
               this.faintedAlliesCount += 1;
               turnLog.notes.push(`${displayName(currentActive.pokemon.name)} fainted!`);
@@ -1385,27 +1498,35 @@ export class BattleState extends EventTarget {
               notesCountBefore = turnLog.notes.length;
             }
           } else {
-            turnLog.bossAction = "do-nothing";
-            turnLog.messages.push(`The opposing <strong>${bossDisplayName}</strong> did nothing.`);
-            turnLog.notes.push("Boss did nothing.");
+            turnLog.bossAction = "cannot-move";
+            turnLog.messages.push(`The opposing <strong>${bossDisplayName}</strong> could not use the selected move.`);
+            turnLog.notes.push("Boss could not use the selected move.");
             notesCountBefore = turnLog.notes.length;
           }
-        } else {
-          // Boss chose do-nothing (no move selected or skipped)
+        } else if (step.action === "do-nothing") {
+          // The user intentionally selected no boss action.
           turnLog.bossAction = "do-nothing";
           turnLog.messages.push(`The opposing <strong>${bossDisplayName}</strong> did nothing.`);
           turnLog.notes.push("Boss did nothing.");
+          notesCountBefore = turnLog.notes.length;
+        } else if (step.action === "cannot-move") {
+          turnLog.bossAction = "cannot-move";
+          const reason = bossCannotMoveReason || "it could not act";
+          turnLog.messages.push(`The opposing <strong>${bossDisplayName}</strong> could not move because ${reason}.`);
+          turnLog.notes.push(`Boss could not move because ${reason}.`);
           notesCountBefore = turnLog.notes.length;
         }
       }
     }
 
     // End-of-turn volatile effects resolve after both actions.
-    this.processEndOfTurnEffects(turnLog);
-    captureNotes();
+    if (this.forcedSwitchReason !== "eject-button") {
+      this.processEndOfTurnEffects(turnLog);
+      captureNotes();
+    }
 
     // Post-turn effects (healing, leftovers, shell bell, sitrus berry)
-    if (this.teamHP[this.activeSlot] > 0) {
+    if (this.teamHP[this.activeSlot] > 0 && this.forcedSwitchReason !== "eject-button") {
       const activeSlotIndex = this.activeSlot;
       const currentActive = this.team[activeSlotIndex];
       const itemSlug = getEffectiveItem({ slotIndex: activeSlotIndex, isBoss: false, item: currentActive.item }, this);
@@ -1468,7 +1589,9 @@ export class BattleState extends EventTarget {
 
     if (this.bossHP <= 0) {
       turnLog.notes.push("Raid Boss DEFEATED!");
-      turnLog.messages.push(`The opposing <strong>${bossDisplayName}</strong> fainted!`);
+      if (!turnLog.messages.some((message) => message.includes(`<strong>${bossDisplayName}</strong> fainted!`))) {
+        turnLog.messages.push(`The opposing <strong>${bossDisplayName}</strong> fainted!`);
+      }
       this.battleActive = false;
       this.awaitingForcedSwitch = false;
     } else if (allFainted) {
@@ -1496,11 +1619,12 @@ export class BattleState extends EventTarget {
     if (!this.battleActive || !this.awaitingForcedSwitch) return;
 
     const incomingMon = this.team[slotIndex];
-    if (!incomingMon || !incomingMon.pokemon || this.teamHP[slotIndex] <= 0) {
+    if (slotIndex === this.activeSlot || !incomingMon || !incomingMon.pokemon || this.teamHP[slotIndex] <= 0) {
       throw new Error("Cannot switch to empty or fainted slot.");
     }
 
     const prevActiveSlot = this.activeSlot;
+    const switchReason = this.forcedSwitchReason;
 
     // Reset current active slot stat boosts, overrides, and types
     this.recordSplitEvent("reset-player", prevActiveSlot);
@@ -1508,26 +1632,28 @@ export class BattleState extends EventTarget {
     this.resetSlotStats(prevActiveSlot);
     this.teamStages[prevActiveSlot] = emptyStages();
     this.teamCurrentTypes[prevActiveSlot] = this.team[prevActiveSlot].pokemon.types.map(({ type }) => type.name);
+    this.metronomeMoveChains[prevActiveSlot] = { moveName: "", consecutiveUses: 0 };
 
     // Swap active slot and initialize incoming boosts
     this.teamStages[slotIndex] = { ...incomingMon.stages };
     this.activeSlot = slotIndex;
     this.awaitingForcedSwitch = false;
+    this.forcedSwitchReason = "";
 
     let forcedSwitchLog = {
       turn: this.currentTurn,
       activeSlot: this.activeSlot,
       pokemon: incomingMon.pokemon.name,
-      playerAction: "switch-forced",
+      playerAction: switchReason === "eject-button" ? "switch-eject-button" : "switch-forced",
       playerMove: "—",
       playerDamage: 0,
       playerHPAfter: this.teamHP[slotIndex],
       bossHPBefore: this.bossHP,
       bossHPAfter: this.bossHP,
-      bossAction: "do-nothing",
+      bossAction: "not-applicable",
       bossMove: "—",
       bossDamage: 0,
-      notes: [`${displayName(incomingMon.pokemon.name)} entered the battle.`],
+      notes: [`${displayName(incomingMon.pokemon.name)} entered the battle${switchReason === "eject-button" ? " after Eject Button activated" : ""}.`],
       messages: [`Go! <strong>${displayName(incomingMon.pokemon.name)}</strong>!`],
       playerMovedFirst: true,
     };

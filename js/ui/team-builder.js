@@ -18,7 +18,13 @@ const TERA_TYPES = [
   "flying", "psychic", "bug", "rock", "ghost", "dragon", "dark", "steel", "fairy"
 ];
 
-const FEATURED_MOVES = ["guard-split", "power-split", "swords-dance", "nasty-plot", "focus-energy", "baton-pass"];
+export const RAID_PICK_MOVES = [
+  "magic-powder", "trick-or-treat", "belly-drum", "screech", "charm",
+  "guard-split", "power-split", "speed-swap", "simple-beam", "forests-curse", "soak", "tar-shot",
+  "memento", "tickle", "tail-glow", "cotton-guard", "octolock", "ingrain", "baton-pass", "focus-energy",
+  "z-trick-or-treat", "swords-dance", "nasty-plot",
+];
+const FEATURED_MOVES = RAID_PICK_MOVES;
 const SMEARGLE_RAID_MOVES = [
   ...FEATURED_MOVES,
   "spore", "screech", "metal-sound", "helping-hand", "fake-tears", "simple-beam", "skill-swap", "gastro-acid",
@@ -28,7 +34,7 @@ const SMEARGLE_RAID_MOVES = [
 ];
 const CURATED_ITEMS = [
   "life-orb", "choice-band", "choice-specs", "choice-scarf", "muscle-band", "wise-glasses", "expert-belt", "metronome",
-  "focus-sash", "leftovers", "shell-bell", "kings-rock", "scope-lens", "razor-claw",
+  "heracronite", "eject-button", "focus-sash", "leftovers", "shell-bell", "kings-rock", "scope-lens", "razor-claw",
   "stick", "leek",
   "normal-gem", "fire-gem", "water-gem", "electric-gem", "grass-gem", "ice-gem", "fighting-gem",
   "poison-gem", "ground-gem", "flying-gem", "psychic-gem", "bug-gem", "rock-gem", "ghost-gem",
@@ -52,7 +58,8 @@ const ITEM_EFFECT_DESCRIPTIONS = {
   "expert-belt": "Super-effective damage ×1.2",
   "muscle-band": "Physical damage ×1.1",
   "wise-glasses": "Special damage ×1.1",
-  metronome: "Manual repeated-move multiplier",
+  metronome: "Repeated consecutive moves gain 1.2x up to 2x damage",
+  "eject-button": "Switches the holder out after it survives a damaging hit",
   "scope-lens": "Critical-hit stage +1",
   "razor-claw": "Critical-hit stage +1",
   stick: "Farfetch’d critical-hit stage +2",
