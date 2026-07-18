@@ -54,9 +54,9 @@ function buildFor(mon, { item = "", ability = "", moves = [] } = {}) {
   return build;
 }
 
-function setupBattle({ item = "", playerMoves = [move("tackle", 40)], bossMoves = [], bossHP = 10_000 } = {}) {
+function setupBattle({ item = "", playerMoves = [move("tackle", 40)], bossMoves = [], bossHP = 10_000, leadName = "shuckle" } = {}) {
   const boss = pokemon("test-boss", { hp: 120, atk: 200, def: 200, spa: 200, spd: 200, spe: 200 }, ["normal"]);
-  const lead = pokemon("shuckle", { hp: 200, atk: 100, def: 180, spa: 100, spd: 180, spe: 20 }, ["bug", "rock"], "sturdy");
+  const lead = pokemon(leadName, { hp: 200, atk: 100, def: 180, spa: 100, spd: 180, spe: 20 }, ["bug", "rock"], "sturdy");
   const reserve = pokemon("smeargle", { hp: 180, atk: 100, def: 100, spa: 100, spd: 100, spe: 100 });
   const state = new BattleState();
   state.setBoss(boss, calculateBossStats(boss));
@@ -134,6 +134,30 @@ const statusEjectState = setupBattle({
 await statusEjectState.executeTurn("use-move", 0, 0, "use-move", 0);
 if (statusEjectState.awaitingForcedSwitch || isItemConsumed({ slotIndex: 0 }, statusEjectState)) {
   throw new Error("Eject Button must not activate on status moves.");
+}
+
+const custapTimingState = setupBattle({
+  leadName: "carbink",
+  item: "custap-berry",
+  playerMoves: [move("guard-split", null, "status", "psychic")],
+  bossMoves: [move("ice-punch", 9999, "physical", "ice")],
+});
+await custapTimingState.executeTurn("use-move", 0, 0, "use-move", 0);
+const custapDamageTurn = custapTimingState.battleLog[0];
+if (custapDamageTurn.playerMovedFirst) throw new Error("Full-HP Carbink should move after the faster boss.");
+if (custapTimingState.teamHP[0] !== 1) throw new Error("Carbink should survive the first hit at 1 HP with Sturdy.");
+if (custapDamageTurn.messages.some((line) => line.includes("Custap Berry")) || isItemConsumed({ slotIndex: 0 }, custapTimingState)) {
+  throw new Error("Custap Berry activated after damage during the same turn.");
+}
+await custapTimingState.executeTurn("use-move", 0, 0, "use-move", 0);
+const custapNextTurn = custapTimingState.battleLog[1];
+if (!custapNextTurn.playerMovedFirst) throw new Error("Custap Berry should give Carbink priority on the next turn.");
+if (!custapNextTurn.messages.some((line) => line.includes("Custap Berry activated"))
+  || !custapNextTurn.messages.some((line) => line.includes("moved first with priority +1"))) {
+  throw new Error("Next-turn Custap activation logging is missing.");
+}
+if (!isItemConsumed({ slotIndex: 0 }, custapTimingState) || custapTimingState.team[0].item !== "custap-berry") {
+  throw new Error("Custap consumption must remain battle-local.");
 }
 
 const lastRespectsState = setupBattle({ playerMoves: [move("last-respects", 50, "physical", "ghost")] });

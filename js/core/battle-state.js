@@ -986,10 +986,15 @@ export class BattleState extends EventTarget {
       move: resolvedBossAction === "use-move" ? bossMove : null
     };
 
-    const playerItemPriorityBonus = (playerActionObj.type === "use-move" || playerActionObj.type === "use-z-move") ? getItemPriorityBonus(playerBattler, playerActionObj.move, this, turnLog) : 0;
+    // Custap eligibility is latched from start-of-turn HP. Never re-check it
+    // after either battler has begun acting.
+    const playerCustapActiveForTurn = (playerActionObj.type === "use-move" || playerActionObj.type === "use-z-move")
+      && checkCustapBerry(playerBattler, this);
+    const playerItemPriorityBonus = playerCustapActiveForTurn ? 1 : 0;
+    const playerMovePriority = playerActionObj.move ? (playerActionObj.move.priority ?? 0) : 0;
     const playerFinalPriority = playerActionObj.type === "switch" || playerActionObj.type === "baton-pass"
       ? 10
-      : (playerActionObj.move ? (playerActionObj.move.priority ?? 0) : 0) + playerItemPriorityBonus;
+      : playerMovePriority + playerItemPriorityBonus;
 
     const bossItemPriorityBonus = bossActionObj.type === "use-move" ? getItemPriorityBonus(bossBattler, bossActionObj.move, this, turnLog) : 0;
     const bossFinalPriority = bossActionObj.type === "switch" || bossActionObj.type === "baton-pass"
@@ -999,25 +1004,21 @@ export class BattleState extends EventTarget {
     const playerSpeed = getEffectiveSpeed(playerBattler, this);
     const bossSpeed = getEffectiveSpeed(bossBattler, this);
 
-    let playerGoesFirst = true;
-    if (playerActionObj.type === "switch" && bossActionObj.type !== "switch") {
-      playerGoesFirst = true;
-    } else if (bossActionObj.type === "switch" && playerActionObj.type !== "switch") {
-      playerGoesFirst = false;
-    } else if (playerFinalPriority > bossFinalPriority) {
-      playerGoesFirst = true;
-    } else if (bossFinalPriority > playerFinalPriority) {
-      playerGoesFirst = false;
-    } else {
+    const resolvePlayerGoesFirst = (playerPriority) => {
+      if (playerActionObj.type === "switch" && bossActionObj.type !== "switch") return true;
+      if (bossActionObj.type === "switch" && playerActionObj.type !== "switch") return false;
+      if (playerPriority > bossFinalPriority) return true;
+      if (bossFinalPriority > playerPriority) return false;
       const trickRoomActive = this.volatileEffects.trickRoomTurns > 0;
-      if (playerSpeed > bossSpeed) {
-        playerGoesFirst = !trickRoomActive;
-      } else if (bossSpeed > playerSpeed) {
-        playerGoesFirst = trickRoomActive;
-      } else {
-        playerGoesFirst = true;
-      }
-    }
+      if (playerSpeed > bossSpeed) return !trickRoomActive;
+      if (bossSpeed > playerSpeed) return trickRoomActive;
+      return true;
+    };
+
+    const playerGoesFirst = resolvePlayerGoesFirst(playerFinalPriority);
+    const custapChangedTurnOrder = playerCustapActiveForTurn
+      && playerGoesFirst
+      && !resolvePlayerGoesFirst(playerMovePriority);
 
     turnLog.playerMovedFirst = playerGoesFirst;
     let notesCountBefore = 0;
@@ -1033,6 +1034,15 @@ export class BattleState extends EventTarget {
     };
 
     const bossDisplayName = getBossDisplayName(this);
+
+    if (playerCustapActiveForTurn) {
+      consumeCustapBerry(playerBattler, this, turnLog, {
+        activeForTurn: true,
+        changedTurnOrder: custapChangedTurnOrder,
+      });
+      turnLog.notes.forEach((note) => turnLog.messages.push(note));
+      notesCountBefore = turnLog.notes.length;
+    }
 
     // Step execution array
     const steps = [];
@@ -1103,10 +1113,6 @@ export class BattleState extends EventTarget {
             }
             move = this.resolveActionMove(move, "player", turnLog);
             turnLog.playerMove = step.action === "use-z-move" ? `Z-${titleCase(move.name)}` : move.name;
-            
-            // Consume Custap Berry when move actually executes
-            consumeCustapBerry(playerBattler, this, turnLog);
-            captureNotes();
             
             if (step.action === "use-z-move" && move.name === "belly-drum") {
               const initialHP = this.teamHP[this.activeSlot];
@@ -1876,17 +1882,18 @@ export function checkCustapBerry(battler, state) {
   );
 }
 
-// Consume Custap Berry and log (called only when move actually executes)
-export function consumeCustapBerry(battler, state, turnLog) {
-  if (checkCustapBerry(battler, state)) {
-    markItemConsumed(battler, state);
-    if (turnLog && turnLog.notes) {
-      turnLog.notes.push(`${displayName(battler.name)}'s Custap Berry activated!`);
+// Consume only from a turn-start eligibility latch. This function deliberately
+// does not inspect current HP, because HP may have changed after order was locked.
+export function consumeCustapBerry(battler, state, turnLog, { activeForTurn = false, changedTurnOrder = false } = {}) {
+  if (!activeForTurn) return false;
+  markItemConsumed(battler, state);
+  if (turnLog && turnLog.notes) {
+    turnLog.notes.push(`${displayName(battler.name)}'s Custap Berry activated!`);
+    if (changedTurnOrder) {
       turnLog.notes.push(`${displayName(battler.name)} moved first with priority +1.`);
     }
-    return true;
   }
-  return false;
+  return true;
 }
 
 export function getItemPriorityBonus(battler, selectedMove, state) {
